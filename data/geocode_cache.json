@@ -41,24 +41,6 @@
     "address": "Kermanshah Province, Iran / Halabja, Iraq border region",
     "queried_at": "2026-10-23T09:27:01Z"
   },
-  "v2|kothrud, pune|": {
-    "lat": 18.5072618,
-    "lon": 73.8056676,
-    "precision": "approximate",
-    "display": "Kothrud, Karve Nagar, Pune, Pune City Subdistrict, Pune, Maharashtra, 411051, India",
-    "confidence": 0.85,
-    "ambiguous": false,
-    "queried_at": "2026-10-23T11:01:45Z"
-  },
-  "v2|sinhagad road|": {
-    "lat": 18.4915372,
-    "lon": 73.8335232,
-    "precision": "approximate",
-    "display": "Sinhagad Road, Karve Nagar, Anandnagar, Pune City Subdistrict, Pune, Maharashtra, 411051, India",
-    "confidence": 0.85,
-    "ambiguous": false,
-    "queried_at": "2026-10-23T11:01:46Z"
-  },
   "v2|acapulco|": {
     "lat": 16.8680495,
     "lon": -99.8940182,
@@ -98,15 +80,6 @@
   "v2|iran and iraq|": {
     "unresolved": true,
     "reason": "no place-level match for 'Iran and Iraq'"
-  },
-  "v2|guajataca dam, isabela, puerto rico|": {
-    "lat": 18.3972582,
-    "lon": -66.924808,
-    "precision": "approximate",
-    "display": "Represa Guajataca, Planas, Isabela, Puerto Rico, United States",
-    "confidence": 0.85,
-    "ambiguous": false,
-    "queried_at": "2026-10-23T11:39:24Z"
   },
   "v2|houston, texas, united states|": {
     "lat": 29.7589382,
@@ -212,5 +185,423 @@
     "confidence": 0.85,
     "ambiguous": false,
     "queried_at": "2026-10-23T16:14:32Z"
+  },
+  "v2|laxmi nagar, delhi, india|": {
+    "lat": 28.6360238,
+    "lon": 77.2751283,
+    "precision": "neighbourhood",
+    "display": "Laxmi Nagar, Shahdara South, Delhi, East Delhi, Delhi, 110031, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:16:11Z"
+  },
+  "v2|kerala, india|": {
+    "lat": 10.3528744,
+    "lon": 76.5120396,
+    "precision": "region",
+    "display": "Kerala, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:18:40Z"
+  },
+  "v2|chennai, tamil nadu, india|": {
+    "lat": 13.0800915,
+    "lon": 80.2807978,
+    "precision": "city",
+    "display": "Chennai, Chennai Metropolitan Area, Chennai District, Tamil Nadu, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:19:07Z"
+  },
+  "v2|mumbai, india|": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:19:40Z"
+  },
+  "v2|puebla, mexico|": {
+    "lat": 18.833333,
+    "lon": -98.0,
+    "precision": "region",
+    "display": "Puebla, México",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:21:15Z"
+  },
+  "v2|guajataca dam, isabela and quebradillas, puerto rico|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Guajataca Dam, Isabela and Quebradillas, Puerto Rico'"
+  },
+  "v2|keralam, india|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Keralam, India'"
+  },
+  "v2|delhi ncr, india|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Delhi NCR, India'"
+  },
+  "v2|alappuzha, idukki, kollam, kerala, india|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Alappuzha, Idukki, Kollam, Kerala, India'"
+  },
+  "v2|mumbai, maharashtra, india|": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:46:19Z"
+  },
+  "v2|aranmula, kerala, india|": {
+    "lat": 9.32681,
+    "lon": 76.6856956,
+    "precision": "city",
+    "display": "Aranmula, Kozhenchery, Pathanamthitta, Kerala, 689533, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:51:57Z"
+  },
+  "v2|delhi|in": {
+    "lat": 28.6328027,
+    "lon": 77.2197713,
+    "precision": "region",
+    "display": "Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:10Z"
+  },
+  "v2|delhi ncr|in": {
+    "lat": 28.6328027,
+    "lon": 77.2197713,
+    "precision": "region",
+    "display": "Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:10Z",
+    "queried_as": "Delhi"
+  },
+  "v2|mumbai|in": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:11Z"
+  },
+  "v2|kerala|in": {
+    "lat": 10.3528744,
+    "lon": 76.5120396,
+    "precision": "region",
+    "display": "Kerala, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:13Z"
+  },
+  "v2|delhi|": {
+    "lat": 28.6664535,
+    "lon": 77.2169781,
+    "precision": "city",
+    "display": "Delhi, Old Delhi, Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:31Z"
+  },
+  "v2|delhi ncr|": {
+    "lat": 28.6664535,
+    "lon": 77.2169781,
+    "precision": "city",
+    "display": "Delhi, Old Delhi, Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:31Z",
+    "queried_as": "Delhi"
+  },
+  "v2|sinhagad road, pune|in": {
+    "lat": 18.4644587,
+    "lon": 73.8157646,
+    "precision": "approximate",
+    "display": "Sinhagad Road, Vadgaon Budruk, Anandnagar, Pune City Subdistrict, Pune, Maharashtra, 411051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:32Z"
+  },
+  "v2|vadgaon bridge, pune|in": {
+    "lat": 18.4638279,
+    "lon": 73.8188517,
+    "precision": "approximate",
+    "display": "Vadgaon BK Highway Bridge, Katraj - Dehu Road Bypass, Vadgaon Budruk, Anandnagar, Pune City Subdistrict, Pune, Maharashtra, 411051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:33Z"
+  },
+  "v2|kothrud, pune|in": {
+    "lat": 18.5072618,
+    "lon": 73.8056676,
+    "precision": "approximate",
+    "display": "Kothrud, Pune, Pune City Subdistrict, Pune, Maharashtra, 411001, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:55:34Z"
+  },
+  "v2|alappuzha, kerala, india|in": {
+    "lat": 9.5003416,
+    "lon": 76.4123364,
+    "precision": "region",
+    "display": "Alappuzha, Kerala, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:57:10Z"
+  },
+  "v2|chennai, tamil nadu, india|in": {
+    "lat": 13.0800915,
+    "lon": 80.2807978,
+    "precision": "city",
+    "display": "Chennai, Chennai Metropolitan Area, Chennai District, Tamil Nadu, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:57:46Z"
+  },
+  "v2|mumbai, india|in": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:58:28Z"
+  },
+  "v2|mexico city, mexico|mx": {
+    "lat": 19.3207722,
+    "lon": -99.1514677,
+    "precision": "region",
+    "display": "Ciudad de México, México",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T19:58:41Z"
+  },
+  "v2|alappuzha, idukki, kollam, kerala, india|in": {
+    "lat": 8.8870533,
+    "lon": 76.5906696,
+    "precision": "city",
+    "display": "Kollam, Kerala, 691001, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:27:34Z",
+    "queried_as": "Idukki, Kollam, Kerala, India",
+    "coarsened": true
+  },
+  "v2|mumbai, maharashtra, india|in": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:00:39Z"
+  },
+  "v2|delhi india|in": {
+    "lat": 28.6328027,
+    "lon": 77.2197713,
+    "precision": "region",
+    "display": "Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:00:57Z"
+  },
+  "v2|delhi ncr, india|in": {
+    "lat": 28.6328027,
+    "lon": 77.2197713,
+    "precision": "region",
+    "display": "Delhi, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:00:57Z",
+    "queried_as": "Delhi India"
+  },
+  "v2|aranmula, kerala, india|in": {
+    "lat": 9.32681,
+    "lon": 76.6856956,
+    "precision": "city",
+    "display": "Aranmula, Kozhenchery, Pathanamthitta, Kerala, 689533, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:02:51Z"
+  },
+  "v2|puebla, mexico|mx": {
+    "lat": 18.833333,
+    "lon": -98.0,
+    "precision": "region",
+    "display": "Puebla, México",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:03:06Z"
+  },
+  "v2|acapulco, guerrero, mexico|mx": {
+    "lat": 16.8680495,
+    "lon": -99.8940182,
+    "precision": "city",
+    "display": "Acapulco, Acapulco de Juárez, Guerrero, 39300, México",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:04:09Z"
+  },
+  "v2|isabela and quebradillas, puerto rico|pr": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Isabela and Quebradillas, Puerto Rico'"
+  },
+  "v2|houston, texas, united states|us": {
+    "lat": 29.7589382,
+    "lon": -95.3676974,
+    "precision": "city",
+    "display": "Houston, Harris County, Texas, United States",
+    "confidence": 0.5,
+    "ambiguous": true,
+    "queried_at": "2026-10-23T20:04:33Z"
+  },
+  "v2|iran and iraq|ir": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Iran and Iraq'"
+  },
+  "v2|pune, maharashtra, india|in": {
+    "lat": 18.5213738,
+    "lon": 73.8545071,
+    "precision": "city",
+    "display": "Pune, Pune City Subdistrict, Pune, Maharashtra, 411001, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:05:00Z"
+  },
+  "v2|kerala, india|in": {
+    "lat": 10.3528744,
+    "lon": 76.5120396,
+    "precision": "region",
+    "display": "Kerala, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:12:22Z"
+  },
+  "v2|olipuzha, karuvarakundu, malappuram, kerala, india|in": {
+    "lat": 11.1250904,
+    "lon": 76.3422456,
+    "precision": "city",
+    "display": "Karuvarakundu, Nilambur, Malappuram, Kerala, 676523, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:24:29Z",
+    "queried_as": "Karuvarakundu, Malappuram, Kerala, India",
+    "coarsened": true
+  },
+  "v2|karuvarakundu, malappuram, kerala, india|": {
+    "lat": 11.1250904,
+    "lon": 76.3422456,
+    "precision": "city",
+    "display": "Karuvarakundu, Nilambur, Malappuram, Kerala, 676523, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:14:54Z"
+  },
+  "v2|olipuzha, karuvarakundu, malappuram, kerala, india|": {
+    "lat": 11.1250904,
+    "lon": 76.3422456,
+    "precision": "city",
+    "display": "Karuvarakundu, Nilambur, Malappuram, Kerala, 676523, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:14:54Z",
+    "queried_as": "Karuvarakundu, Malappuram, Kerala, India",
+    "coarsened": true
+  },
+  "v2|nowhereville, qwertyland|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Nowhereville, Qwertyland'"
+  },
+  "v2|karuvarakundu, malappuram, kerala, india|in": {
+    "lat": 11.1250904,
+    "lon": 76.3422456,
+    "precision": "city",
+    "display": "Karuvarakundu, Nilambur, Malappuram, Kerala, 676523, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:24:29Z"
+  },
+  "v2|karuvarakundu, malappuram|in": {
+    "lat": 11.1250904,
+    "lon": 76.3422456,
+    "precision": "city",
+    "display": "Karuvarakundu, Nilambur, Malappuram, Kerala, 676523, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:24:30Z"
+  },
+  "v2|zxcvb, nowhere|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Zxcvb, Nowhere'"
+  },
+  "v2|qwerty, zxcvb, nowhere|": {
+    "unresolved": true,
+    "reason": "no place-level match for 'Qwerty, Zxcvb, Nowhere'"
+  },
+  "v2|kollam, kerala, india|in": {
+    "lat": 8.8870533,
+    "lon": 76.5906696,
+    "precision": "city",
+    "display": "Kollam, Kerala, 691001, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:27:34Z"
+  },
+  "v2|idukki, kollam, kerala, india|in": {
+    "lat": 8.8870533,
+    "lon": 76.5906696,
+    "precision": "city",
+    "display": "Kollam, Kerala, 691001, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:27:34Z",
+    "queried_as": "Kollam, Kerala, India",
+    "coarsened": true
+  },
+  "v2|andheri, mumbai, maharashtra, india|in": {
+    "lat": 19.054999,
+    "lon": 72.8692035,
+    "precision": "city",
+    "display": "Mumbai, Mumbai Suburban District, Maharashtra, 400051, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:00:39Z",
+    "queried_as": "Mumbai, Maharashtra, India",
+    "coarsened": true
+  },
+  "v2|kottayam, kerala, india|in": {
+    "lat": 9.6287383,
+    "lon": 76.6455326,
+    "precision": "region",
+    "display": "Kottayam, Kerala, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:32:13Z"
+  },
+  "v2|parassala, kerala, india|in": {
+    "lat": 8.3428993,
+    "lon": 77.1547766,
+    "precision": "city",
+    "display": "Parassala, Neyyattinkara, Thiruvananthapuram, Kerala, 695502, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:32:39Z"
+  },
+  "v2|kodaikanal, tamil nadu, india|in": {
+    "lat": 10.233712,
+    "lon": 77.4919719,
+    "precision": "city",
+    "display": "Kodaikanal, Dindigul, Tamil Nadu, India",
+    "confidence": 0.85,
+    "ambiguous": false,
+    "queried_at": "2026-10-23T20:32:58Z"
   }
 }

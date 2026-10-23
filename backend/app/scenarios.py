@@ -56,8 +56,8 @@ def load_pune_flood(t0: datetime) -> list[dict]:
         quantities=[{"type": "rainfall_mm", "value": 142, "date": t0.date().isoformat()}])
     _ev("pune_news_local", t0, source_name="[SYNTHETIC] Lokmat-style local news", kind="news", layer="local_news",
         credibility_tier="C", raw_evidence_text="सिंहगड रस्त्यावर पाणी साचले; वडगाव पुलाजवळ वाहने अडकली (Sinhagad Road "
-                                                "waterlogged; vehicles stuck near Vadgaon bridge)",
-        evidence_interpretation="[SYNTHETIC] Local news: Sinhagad Road waterlogged, vehicles stuck near Vadgaon bridge",
+                                                "waterlogged, 3-4 ft of water; vehicles stuck near Vadgaon bridge)",
+        evidence_interpretation="[SYNTHETIC] Local news: Sinhagad Road waterlogged with 3-4 ft of water, vehicles stuck near Vadgaon bridge",
         event_type="flood", published_at=_t(t0, -25), valid_from=_t(t0, -25), latitude=18.47, longitude=73.82,
         location_text="Sinhagad Road, Pune", country="IN", language="mr", source_document_id="SYN-NEWS-LOKMAT-1",
         copy_group_id="cg_syn_pune1", is_group_origin=1)
@@ -67,6 +67,18 @@ def load_pune_flood(t0: datetime) -> list[dict]:
         event_type="flood", published_at=_t(t0, -10), valid_from=_t(t0, -10), latitude=18.47, longitude=73.82,
         location_text="Sinhagad Road, Pune", country="IN", source_document_id="SYN-NEWS-COPY-1",
         copy_group_id="cg_syn_pune1", is_group_origin=0)
+    _ev("pune_news_second", t0, source_name="[SYNTHETIC] Pune Times-style local news", kind="news", layer="local_news",
+        credibility_tier="C", raw_evidence_text="Vehicles stranded near Vadgaon bridge on Sinhagad Road as water rises; "
+                                                "police advise motorists to avoid the stretch",
+        evidence_interpretation="[SYNTHETIC] Local news: vehicles stranded near Vadgaon bridge on Sinhagad Road",
+        event_type="flood", published_at=_t(t0, -8), valid_from=_t(t0, -8), latitude=18.47, longitude=73.82,
+        location_text="Sinhagad Road, Pune", country="IN", source_document_id="SYN-NEWS-PTIMES-1")
+    _ev("pune_news_kothrud", t0, source_name="[SYNTHETIC] Pune Mirror-style local news", kind="news", layer="local_news",
+        credibility_tier="C", raw_evidence_text="Heavy rain flooded low-lying lanes in Kothrud near Karve Road; water entered "
+                                                "ground-floor homes",
+        evidence_interpretation="[SYNTHETIC] Local news: water entered homes in Kothrud near Karve Road",
+        event_type="flood", published_at=_t(t0, 6), valid_from=_t(t0, 6), latitude=18.503, longitude=73.812,
+        location_text="Kothrud, Pune", country="IN", source_document_id="SYN-NEWS-KOTHRUD-1")
     P = [
         (2, "Sinhagad Road is under 3-4 ft of water, cars stuck near Vadgaon bridge. Avoid the area!",
          "VERIFIED", 18.4745, 73.8180),

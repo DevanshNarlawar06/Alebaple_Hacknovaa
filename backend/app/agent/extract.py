@@ -48,6 +48,10 @@ Rules:
 - Split the post into ATOMIC propositions (one checkable fact each), written in English in `text_en`.
 - `source_span` MUST be a contiguous, exact copy of characters from the post (the part stating that fact). Several
   propositions may share the same source_span. Never paraphrase inside source_span.
+- Each proposition must stand on its own: repeat the place it refers to inside `text_en` ("Flood warning issued for
+  Alappuzha, Idukki and Kollam in Kerala", not "A warning was issued"). Keep several places of one fact together
+  in one proposition. Do NOT add dates or times that are not written in the post (no "on October 23"), and do not
+  emit a proposition that only restates when something was said ("for tonight").
 - materiality: "core" = the disaster event itself happened at that place/time; "detail" = numbers, damage, directives, specifics.
 - factuality: SUBJECTIVE for feelings/personal experience/opinions ("scariest quake ever"), NON_FACTUAL for prayers,
   questions, appeals, jokes, URLs; FACTUAL otherwise. Do not invent facts that are not in the post.
@@ -57,7 +61,7 @@ Rules:
   geocodable string with region/country (e.g. "Acapulco, Guerrero, Mexico"). Do not add places not mentioned.
 - event_date: ISO date (YYYY-MM-DD) of the event if stated or clearly implied relative to the post time, else null.
 - is_claim=false if the post makes no checkable factual assertion about a disaster.
-Post time (UTC): {posted_at}
+Post date (UTC): {posted_at}
 Post:
 <<<
 {text}
@@ -104,7 +108,7 @@ def _fallback(text: str) -> dict:
 
 def extract(text: str, posted_at: str | None) -> dict:
     try:
-        out = generate_json(PROMPT.format(text=text, posted_at=posted_at or "unknown"), SCHEMA)
+        out = generate_json(PROMPT.format(text=text, posted_at=(posted_at or "unknown")[:10]), SCHEMA)
         out["method"] = "gemini"
     except LLMError as e:
         out = _fallback(text)

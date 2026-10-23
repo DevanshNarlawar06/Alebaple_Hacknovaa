@@ -20,6 +20,28 @@ class LLMError(Exception):
     pass
 
 
+_key_state: dict = {"t": 0.0, "ok": False, "why": "not checked"}
+
+
+def check_key(max_age_s: float = 120) -> tuple[bool, str]:
+    """Is the configured key accepted by Google? Listing models costs no quota. Cached for a couple of minutes."""
+    import time
+    if not USE_LLM:
+        return False, "no GEMINI_API_KEY set" if not GEMINI_API_KEY else "LLM disabled (USE_LLM=0)"
+    if time.time() - _key_state["t"] < max_age_s:
+        return _key_state["ok"], _key_state["why"]
+    try:
+        r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models", headers={"x-goog-api-key": GEMINI_API_KEY},
+                      params={"pageSize": 1}, timeout=8)
+        ok, why = r.status_code == 200, ("ok" if r.status_code == 200 else
+                                          "Gemini rejected the API key (it must be an AI Studio key starting with AIza)"
+                                          if r.status_code in (400, 401, 403) else f"HTTP {r.status_code}")
+    except httpx.HTTPError as e:
+        ok, why = False, f"cannot reach Gemini ({type(e).__name__})"
+    _key_state.update(t=time.time(), ok=ok, why=why)
+    return ok, why
+
+
 def generate_json(prompt: str, schema: dict, *, timeout: float = 45) -> dict:
     last = None
     for m in (GEMINI_MODEL, GEMINI_MODEL, GEMINI_FALLBACK):  # one retry, then the lighter model

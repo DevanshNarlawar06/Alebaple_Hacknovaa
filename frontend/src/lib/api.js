@@ -20,6 +20,27 @@ export const api = {
   evalLatest: () => fetch('/api/eval/latest').then(j),
 }
 
+/**
+ * Run a check and report real progress. Start a job, then poll it: plain HTTP, so the same code works in a
+ * React Native app. onUpdate gets {steps, done, elapsed} about every 350 ms.
+ */
+export async function checkLive(body, onUpdate, persist = true) {
+  const { job_id } = await fetch(`/api/claims/check/start?persist=${persist}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).then(j)
+  const deadline = Date.now() + 5 * 60 * 1000
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 350))
+    const s = await fetch(`/api/claims/check/${job_id}`).then(j)
+    onUpdate?.(s)
+    if (s.done) {
+      if (s.error) throw new Error(s.error)
+      return s.result
+    }
+    if (Date.now() > deadline) throw new Error('The check took too long. Please try again.')
+  }
+}
+
 export function onStream(handlers) {
   const es = new EventSource('/api/stream')
   for (const [type, fn] of Object.entries(handlers)) es.addEventListener(type, (e) => fn(JSON.parse(e.data)))

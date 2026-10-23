@@ -13,6 +13,13 @@ FORECAST = "https://api.open-meteo.com/v1/forecast?"
 DAILY = "precipitation_sum,temperature_2m_max,wind_speed_10m_max"
 
 
+def page_url(params: dict, archive: bool) -> str:
+    """Open-Meteo's own readable page (chart and table) for these coordinates and dates, not the raw JSON API."""
+    base = "https://open-meteo.com/en/docs/historical-weather-api" if archive else "https://open-meteo.com/en/docs"
+    keep = {k: params[k] for k in ("latitude", "longitude", "start_date", "end_date", "daily", "timezone") if k in params}
+    return base + "#" + urlencode(keep)
+
+
 def daily(lat: float, lon: float, day: str, span_days: int = 1) -> list[dict]:
     """Weather for [day - span_days, day + span_days]. Uses the archive for dates > 5 days old."""
     d = date.fromisoformat(day[:10])
@@ -38,7 +45,7 @@ def daily(lat: float, lon: float, day: str, span_days: int = 1) -> list[dict]:
                   f"on {t}: rainfall {rain} mm, max temperature {tmax} °C, max wind {wind} km/h.")
         ev = dict(
             evidence_id=stable_id("ev_om_", q["latitude"], q["longitude"], t), source_id="src_openmeteo",
-            source_name="Open-Meteo", source_url=(ARCHIVE if old else FORECAST) + urlencode(q),
+            source_name="Open-Meteo", source_url=page_url(q, old),
             raw_evidence_text=raw, evidence_interpretation=interp, evidence_text=interp,
             published_at=f"{t}T23:59:00Z", valid_from=f"{t}T00:00:00Z", valid_until=f"{t}T23:59:59Z",
             event_type="other", latitude=q["latitude"], longitude=q["longitude"], credibility_tier="A",

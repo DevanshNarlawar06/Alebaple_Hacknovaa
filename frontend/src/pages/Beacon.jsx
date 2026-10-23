@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { api, ago, onStream } from '../lib/api'
 import { StatusPill, STATUS } from '../components/ui'
+import MobileCheck from '../components/MobileCheck'
 
 const PLACES = {
   'Kothrud, Pune': [18.5074, 73.8077], 'Sinhagad Road, Pune': [18.4745, 73.818], 'Laxmi Nagar, Delhi': [28.6304, 77.2777],
@@ -57,9 +58,6 @@ export default function Beacon() {
   const [view, setView] = useState('home')
   const [sound, setSound] = useState(false)
   const [safe, setSafe] = useState(false)
-  const [msg, setMsg] = useState('')
-  const [checkRes, setCheckRes] = useState(null)
-  const [busy, setBusy] = useState(false)
   const last = useRef(null)
   const alarm = useAlarm()
   const [lat, lon] = PLACES[place]
@@ -92,10 +90,6 @@ export default function Beacon() {
   }[level]
   const verifiedBy = [alert && shortSource(alert.source_name) + ' alert', ...nearby.filter((c) => c.status === 'VERIFIED').slice(0, 1).map(() => 'verified local reports')].filter(Boolean).join(' + ')
 
-  const doCheck = async () => {
-    setBusy(true); setCheckRes(null)
-    try { setCheckRes(await api.check({ text: msg, lat, lon })) } finally { setBusy(false) }
-  }
   const back = (title) => (
     <div className="flex items-center gap-2">
       <button onClick={() => setView('home')} className="rounded-full p-1 hover:bg-slate-100"><ChevronLeft size={20} /></button>
@@ -229,30 +223,7 @@ export default function Beacon() {
             </section>
           )}
 
-          {view === 'check' && (
-            <section className="space-y-3">
-              {back('Check a message')}
-              <textarea rows={5} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Paste a forwarded message or link"
-                className="w-full rounded-xl border border-line bg-subtle p-3 text-[15px] outline-none focus:border-accent focus:bg-white" />
-              <button className="btn-primary w-full rounded-lg py-3 text-sm" disabled={!msg.trim() || busy} onClick={doCheck}>{busy ? 'Checking…' : 'Check'}</button>
-              {busy && <div className="h-1 w-full overflow-hidden rounded bg-line"><div className="h-1 w-1/3 animate-pulse rounded bg-accent" /></div>}
-              {checkRes && (
-                <div className="rounded-xl border border-line p-4" style={{ borderLeft: `4px solid ${STATUS[checkRes.status]?.hex || '#94A3B8'}` }}>
-                  {checkRes.checkworthy === false ? <p className="text-sm">Nothing to check here — it isn't a factual claim.</p> : (
-                    <>
-                      <StatusPill status={checkRes.status} />
-                      <p className="mt-2 text-lg font-semibold leading-snug">{PLAIN[checkRes.status]}</p>
-                      <ul className="mt-2 space-y-1 text-sm text-ink-2">
-                        {checkRes.atomic_propositions.filter((p) => p.factuality === 'FACTUAL').map((p) => (
-                          <li key={p.id}>• {p.text} — <span className="text-ink-3">{p.state.toLowerCase()}</span></li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
+          {view === 'check' && <MobileCheck onBack={() => setView('home')} />}
 
           {view === 'settings' && (
             <section className="space-y-4">

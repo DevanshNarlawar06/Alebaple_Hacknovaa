@@ -59,7 +59,7 @@ export default function Home() {
               [h?.counts?.evidence ?? '—', 'evidence items', 'from live + archived sources'],
               [alerts.length || '—', 'active official alerts', 'NDMA · GDACS right now'],
               [claims.length || '—', 'claims verified', 'in this deployment'],
-              [h?.llm ? 'Gemini + NLI' : '—', 'AI stack', 'multilingual, runs with local models'],
+              [h?.llm_ok ? 'Gemini + NLI' : h ? 'NLI only' : '—', 'AI stack', h && !h.llm_ok ? (h.llm_status || 'Gemini unavailable') : 'multilingual, runs with local models'],
             ].map(([v, k, s]) => (
               <div key={k} className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur">
                 <div className="font-mono text-2xl font-medium text-white">{v}</div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ago, fmtTime } from '../lib/api'
 import { StatusPill, Tag, ConfBar, PropositionRow, EvidenceItem } from './ui'
+import EvidenceBreakdown from './Evidence'
 
 export default function ClaimPanel({ claimId }) {
   const [data, setData] = useState(null)
@@ -50,7 +51,7 @@ export default function ClaimPanel({ claimId }) {
         )}
         {r.source_article && (
           <a href={r.source_article.url} target="_blank" rel="noreferrer" className="mt-2 block truncate text-[12px] text-accent hover:underline">
-            From article · {r.source_article.publisher} ↗
+            {r.source_article.method === 'youtube' ? 'From YouTube video' : 'From article'} · {r.source_article.publisher} ↗
           </a>
         )}
         <div className="mt-2 font-mono text-[11px] text-ink-3">
@@ -64,26 +65,33 @@ export default function ClaimPanel({ claimId }) {
         <div className="space-y-2">{r.atomic_propositions.map((p) => <PropositionRow key={p.id} p={p} />)}</div>
       </section>
 
+      {r.source_scoreboard ? (
+        <section className="border-b border-line p-5">
+          <div className="label">Evidence</div>
+          <EvidenceBreakdown r={r} />
+        </section>
+      ) : (
       <section className="border-b border-line p-5">
-        <div className="mb-3 flex items-baseline gap-2"><span className="text-sm font-medium">Supports</span>
-          <span className="font-mono text-xs text-ink-3">({r.supporting_evidence.length})</span></div>
-        <div className="space-y-2">
-          {r.supporting_evidence.slice(0, 6).map((e, i) => <EvidenceItem key={e.evidence_id + i} e={e} />)}
-          {!r.supporting_evidence.length && <p className="text-xs text-ink-3">No supporting evidence found.</p>}
-        </div>
-        <div className="mb-3 mt-5 flex items-baseline gap-2"><span className="text-sm font-medium">Contradicts</span>
-          <span className="font-mono text-xs text-ink-3">({r.contradicting_evidence.length})</span></div>
-        <div className="space-y-2">
-          {r.contradicting_evidence.slice(0, 6).map((e, i) => <EvidenceItem key={e.evidence_id + i} e={e} />)}
-          {!r.contradicting_evidence.length && <p className="text-xs text-ink-3">No positive contradicting evidence. (Absence of evidence is not treated as contradiction.)</p>}
-        </div>
-        {r.superseded_or_stale_evidence?.length > 0 && (
-          <>
-            <div className="mb-3 mt-5 text-sm font-medium">No longer current</div>
-            <div className="space-y-2">{r.superseded_or_stale_evidence.slice(0, 4).map((e, i) => <EvidenceItem key={e.evidence_id + 's' + i} e={e} />)}</div>
-          </>
-        )}
-      </section>
+          <div className="mb-3 flex items-baseline gap-2"><span className="text-sm font-medium">Supports</span>
+            <span className="font-mono text-xs text-ink-3">({r.supporting_evidence.length})</span></div>
+          <div className="space-y-2">
+            {r.supporting_evidence.slice(0, 6).map((e, i) => <EvidenceItem key={e.evidence_id + i} e={e} />)}
+            {!r.supporting_evidence.length && <p className="text-xs text-ink-3">No supporting evidence found.</p>}
+          </div>
+          <div className="mb-3 mt-5 flex items-baseline gap-2"><span className="text-sm font-medium">Contradicts</span>
+            <span className="font-mono text-xs text-ink-3">({r.contradicting_evidence.length})</span></div>
+          <div className="space-y-2">
+            {r.contradicting_evidence.slice(0, 6).map((e, i) => <EvidenceItem key={e.evidence_id + i} e={e} />)}
+            {!r.contradicting_evidence.length && <p className="text-xs text-ink-3">No positive contradicting evidence. (Absence of evidence is not treated as contradiction.)</p>}
+          </div>
+          {r.superseded_or_stale_evidence?.length > 0 && (
+            <>
+              <div className="mb-3 mt-5 text-sm font-medium">No longer current</div>
+              <div className="space-y-2">{r.superseded_or_stale_evidence.slice(0, 4).map((e, i) => <EvidenceItem key={e.evidence_id + 's' + i} e={e} />)}</div>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="border-b border-line p-5">
         <div className="label mb-3">Time</div>

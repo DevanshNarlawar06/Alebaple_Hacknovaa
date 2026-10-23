@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -19,10 +20,10 @@ from .. import config as C
 from ..connectors import geocode as geo_mod
 from ..connectors import news, openmeteo, usgs
 from ..connectors.base import FetchError
-from ..db import conn, insert, new_id, now, rows
+from ..db import conn, insert, new_id, now, rows, stable_id
 from ..ml import models
-from .extract import extract
-from .url_claim import expand as expand_url
+from .extract import LEX, extract
+from .url_claim import URL_RE, expand as expand_url
 
 COMPAT = {"flood": {"flood", "storm", "cyclone", "other"}, "storm": {"storm", "cyclone", "flood", "other"},
           "cyclone": {"cyclone", "storm", "flood", "other"}, "earthquake": {"earthquake", "tsunami"},
@@ -70,11 +71,58 @@ def _trust(ev: dict) -> float:
 
 # ---------------- evidence gathering ----------------
 
+PLACE_STOP = {"districts", "district", "city", "area", "areas", "state", "near", "road", "street", "south", "north",
+              "east", "west", "india", "town", "village", "region", "zone", "coast", "coastal", "taluka", "tehsil",
+              "mandal", "mandals", "division", "colony", "from", "with", "that", "this", "right", "tonight", "today"}
+
+
+def broad_place_words(display: str | None, place_words: list[str]) -> set[str]:
+    """Words naming the state/country the place sits in. They only match region-wide text, so they weigh less than
+    a district or locality name. If the claim names nothing finer than that, nothing is broad."""
+    parts = [p.strip().lower() for p in (display or "").split(",") if p.strip() and not p.strip().isdigit()]
+    if len(parts) < 3:
+        return set()
+    broad = {w for p in parts[-2:] for w in p.replace("-", " ").split()}
+    finer = [w for w in place_words if len(w) >= 4 and w.lower() not in PLACE_STOP and w.lower() not in broad]
+    return broad if finer else set()
+
+
+def _headline(text: str) -> str:
+    """First sentence of a link's text, with separators like '| | |' cleaned up, for the progress line."""
+    t = re.sub(r"(\s*\|\s*)+", " · ", (text or "").split(". ")[0])
+    return t.strip(" ·.|")[:80]
+
+
+_FRIENDLY = {"usgs": "USGS earthquake catalogue", "openmeteo": "Open-Meteo rainfall records", "news": "Google News"}
+
+
+def _friendly_call(c: str) -> str:
+    """'news.google_news('Kerala flood', en) -> 15' as a line a person can read."""
+    m = re.match(r"(\w+)\.(\w+)\((.*)\) → (\d+)$", c)
+    if not m:
+        return "A live lookup failed; continuing with what is stored"
+    what = {"usgs": "earthquakes", "openmeteo": "days of rainfall data", "news": "headlines"}.get(m.group(1), "items")
+    return f"{_FRIENDLY.get(m.group(1), m.group(1))}: {m.group(4)} {what}"
+
+
+class _Calls(list):
+    """The live-lookup log; every entry is also reported as it happens, so the app can show it."""
+
+    def __init__(self, progress=None):
+        super().__init__()
+        self._p = progress
+
+    def append(self, item):
+        super().append(item)
+        if self._p:
+            self._p("search", None, "sub", sub=_friendly_call(item))
+
+
 def gather(hazard: str, lat, lon, place_words: list[str], event_day: datetime, t_verify: datetime,
            lang: str, place_query: str | None, live: bool, trace: list, prop_queries: list[str] | None = None,
-           scope: str | None = None) -> list[dict]:
+           scope: str | None = None, broad_words: set[str] | None = None, progress=None) -> list[dict]:
     R = C.HAZARD_GEO.get(hazard, (30, 150))[1]
-    calls = []
+    calls = _Calls(progress)
     fetched: set[str] = set()
     tt = time.time()
     if live:
@@ -116,10 +164,23 @@ def gather(hazard: str, lat, lon, place_words: list[str], event_day: datetime, t
                 (lo, hi, *COMPAT.get(hazard, {hazard})))
     if scope == "synthetic":  # demo scenarios are judged only against their own synthetic evidence
         cand = [e for e in cand if e.get("is_synthetic")]
+    elif scope != "all":  # real claims are never judged against demo data
+        cand = [e for e in cand if not e.get("is_synthetic")]
     out = []
-    pw = [w.lower() for w in place_words if len(w) >= 4]
+    broad = set(broad_words or ())
+    pw = list(dict.fromkeys(w.lower() for w in place_words if len(w) >= 4 and w.lower() not in PLACE_STOP))
     for ev in cand:
         g, dist, basis = None, None, None
+        # a place the claim names that the evidence text names too (e.g. an alert listing the district) beats the
+        # distance to a single geocoded centroid, which can land in a district the alert does not cover
+        txt = (ev.get("raw_evidence_text") or "").lower() + " " + (ev.get("evidence_interpretation") or "").lower()
+        hits = [w for w in pw if w in txt]
+        specific = [w for w in hits if w not in broad]
+        g_txt, b_txt = None, None
+        if specific:
+            g_txt, b_txt = 0.9, f"mentions '{specific[0]}'"
+        elif hits:
+            g_txt, b_txt = 0.5, f"mentions '{hits[0]}' (region only)"
         if ev.get("polygon_geojson") and lat is not None:
             try:
                 if shape(json.loads(ev["polygon_geojson"])).buffer(0.02).contains(Point(lon, lat)):
@@ -130,16 +191,15 @@ def gather(hazard: str, lat, lon, place_words: list[str], event_day: datetime, t
             pass  # handled by the text/place match below
         elif g is None and ev.get("latitude") is not None and lat is not None:
             dist = haversine(lat, lon, ev["latitude"], ev["longitude"])
-            if dist > R:
+            if dist > R and g_txt is None:
                 continue
             D = C.HAZARD_GEO.get(hazard, (30, 150))[0]
-            g, basis = math.exp(-dist / D) if dist > D * 0.2 else 1.0, f"{dist:.0f} km away"
+            if dist <= R:
+                g, basis = math.exp(-dist / D) if dist > D * 0.2 else 1.0, f"{dist:.0f} km away"
+        if g_txt is not None and (g is None or g_txt > g):
+            g, basis = g_txt, b_txt
         if g is None:
-            txt = (ev.get("raw_evidence_text") or "").lower() + " " + (ev.get("evidence_interpretation") or "").lower()
-            hits = [w for w in pw if w in txt]
-            if hits:
-                g, basis = 0.9, f"mentions '{hits[0]}'"
-            elif ev["evidence_id"] in fetched:
+            if ev["evidence_id"] in fetched:
                 g, basis = 0.6, "returned by this claim's place-specific news search"
             else:
                 continue
@@ -179,6 +239,12 @@ def rule_stance(p: dict, ev: dict, hazard: str, event_day: datetime, claim_time:
     txt = (p["text_en"] or "").lower()
     if p.get("type") == "time" and ev.get("_bound"):
         t = _dt(ev.get("valid_from") or ev.get("published_at"))
+        stated = _explicit_date(txt)
+        if t and stated:
+            gap = abs((stated.date() - t.date()).days)
+            if gap <= 1:
+                return {"ent": 0.85, "con": 0.0, "rule": f"event occurred on {t:%d %b %Y}"}
+            return {"ent": 0.0, "con": 0.7, "kind": "TEMPORAL_MISMATCH", "rule": f"event occurred on {t:%d %b %Y}, not {stated:%d %b %Y}"}
         if t:
             local = t + timedelta(hours=5, minutes=30) if (ev.get("latitude") or 0) and 60 < (ev.get("longitude") or 0) < 100 else t
             days = [d for d in WEEKDAYS if d in txt]
@@ -212,7 +278,7 @@ def rule_stance(p: dict, ev: dict, hazard: str, event_day: datetime, claim_time:
                 r = qv / max(mm, 0.1)
                 if 0.6 <= r <= 1.6:
                     return {"ent": 0.8, "con": 0.0, "rule": f"claimed {qv} mm vs recorded {mm} mm"}
-                if r > 2.5 and mm < qv:
+                if r > 1.8 and mm < qv:
                     return {"ent": 0.0, "con": 0.8, "kind": "NUMERIC_CONFLICT", "rule": f"claimed {qv} mm vs recorded {mm} mm"}
             elif p.get("type") == "event" and any(w in txt for w in ("rain", "flood", "waterlog", "inundat", "submerge")):
                 if mm >= 64.5:
@@ -239,6 +305,81 @@ def rule_stance(p: dict, ev: dict, hazard: str, event_day: datetime, claim_time:
         if ev.get("kind") == "news":
             return {"ent": 0.0, "con": 0.0, "rule": "no count in this item (count claims are not judged by text similarity)"}
     return None
+
+
+def _usgs_absence(hazard, factual, geo, bound, trace, event_day, t_verify, lat, lon, live) -> list[dict]:
+    """The USGS catalogue is complete for earthquakes of magnitude 4.5+ worldwide, so a claimed M5+ quake at a
+    resolved place, with no matching catalogue event nearby in the window, is positively contradicted. This is the
+    one place where absence counts: it needs a successful catalogue query, a precise place and a large magnitude."""
+    if not live or hazard != "earthquake" or bound or lat is None:
+        return []
+    if (geo.get("resolved") or {}).get("precision") not in ("city", "neighbourhood", "street", "provided"):
+        return []
+    calls = next((t["calls"] for t in trace if t["step"] == "gather.live"), [])
+    if not any(c.startswith("usgs.search") for c in calls) or any("failed" in c for c in calls):
+        return []
+    mags = [p["quantity_value"] for p in factual if p.get("quantity_type") == "magnitude" and p.get("quantity_value")]
+    for p in factual:  # the model does not always tag the quantity; read it from the wording too
+        m = _MAG.search(p.get("text_en") or "")
+        if m:
+            mags.append(float(m.group(1) or m.group(2)))
+    if not mags or max(mags) < 5.0:
+        return []
+    thr = max(4.5, max(mags) - 1.5)
+    d0, d1 = (event_day - timedelta(days=3)).date().isoformat(), (event_day + timedelta(days=3)).date().isoformat()
+    ev = {"evidence_id": stable_id("neg_usgs_", round(lat, 1), round(lon, 1), d0), "source_id": "src_usgs",
+          "source_name": "USGS Earthquake Catalog", "layer": "sensor", "credibility_tier": "A", "kind": "observation",
+          "published_at": _iso(t_verify), "retrieved_at": _iso(t_verify), "latitude": lat, "longitude": lon,
+          "location_text": (geo.get("resolved") or {}).get("display"), "provenance_status": "VALIDATED",
+          "source_url": "https://earthquake.usgs.gov/earthquakes/map/",
+          "raw_evidence_text": f"USGS catalogue search {d0} to {d1} around {lat:.2f}, {lon:.2f}: no earthquake of "
+                               f"magnitude {thr:.1f} or more within {C.HAZARD_GEO['earthquake'][1]} km.",
+          "evidence_interpretation": "USGS lists no earthquake of this size near the place in this period (the "
+                                     "catalogue is complete for M4.5+).",
+          "_geo": 1.0, "_dist": 0.0, "_geo_basis": "catalogue search around the claimed place"}
+    out = []
+    for p in factual:
+        if p.get("quantity_type") == "magnitude" or _MAG.search(p.get("text_en") or "") or (
+                p.get("type") == "event" and re.search(r"earthquake|quake|tremor|seismic", (p.get("text_en") or "").lower())):
+            out.append({"p": p, "ev": ev, "sim": 1.0, "ent": 0.0, "con": 0.8, "kind": "POSITIVE_CONTRADICTION",
+                        "rule": f"USGS catalogue lists no M{thr:.1f}+ earthquake within {C.HAZARD_GEO['earthquake'][1]} km in {d0}..{d1}"})
+    trace.append({"step": "usgs_absence", "applied_to": len(out), "min_magnitude": thr})
+    return out
+
+
+_MAG = re.compile(r"(?:magnitude|mag\.?|richter)\s*(?:of\s*)?(\d(?:\.\d)?)|(\d(?:\.\d)?)\s*[- ]?(?:magnitude|mag|richter|earthquake|quake)", re.I)
+_FORECAST = re.compile(r"likely to|very likely|expected to|may occur|possible|forecast|next \d+ (?:hours|days)", re.I)
+_NUM = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _unmatched_numbers(claim: str, ev: dict) -> bool:
+    """True if the claim states a figure that does not appear anywhere in the evidence text."""
+    nums = {n.replace(",", "") for n in _NUM.findall(claim or "")}
+    if not nums:
+        return False
+    have = {n.replace(",", "") for n in _NUM.findall(f"{ev.get('raw_evidence_text') or ''} {ev.get('evidence_interpretation') or ''}")}
+    return not (nums & have)
+
+
+def _all_numbers_present(claim: str, ev: dict) -> bool:
+    """True if the claim states figures and every one of them appears in the evidence text."""
+    nums = {n.replace(",", "") for n in _NUM.findall(claim or "")}
+    have = {n.replace(",", "") for n in _NUM.findall(f"{ev.get('raw_evidence_text') or ''} {ev.get('evidence_interpretation') or ''}")}
+    return bool(nums) and nums <= have
+
+
+_MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec"
+_DATE = re.compile(rf"(\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTHS})\.?,?\s+\d{{4}}|(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}|\d{{4}}-\d{{2}}-\d{{2}})", re.I)
+
+
+def _explicit_date(txt: str) -> datetime | None:
+    """A full calendar date written in the proposition ('19 September 2017'), or None."""
+    m = _DATE.search(txt or "")
+    if not m:
+        return None
+    import dateparser
+    d = dateparser.parse(m.group(1), settings={"TIMEZONE": "UTC", "RETURN_AS_TIMEZONE_AWARE": True})
+    return d.astimezone(timezone.utc) if d else None
 
 
 def premise_of(ev: dict) -> str:
@@ -273,21 +414,32 @@ def temporal_relation(ev: dict, claim_time: datetime, t_verify: datetime) -> str
 def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", verification_time: str | None = None,
            lat: float | None = None, lon: float | None = None, place: str | None = None, hazard_hint: str | None = None,
            claim_id: str | None = None, channel: str = "tipline", source_metadata: dict | None = None,
-           persist: bool = True, live: bool = True, scope: str | None = None) -> dict:
+           persist: bool = True, live: bool = True, scope: str | None = None, progress=None) -> dict:
     t0 = time.time()
+    # progress(step_id, label, state, detail=None, sub=None): lets a client show real, live progress
+    step = progress or (lambda *a, **k: None)
     trace: list[dict] = []
     article = None
     if "http" in (text or ""):
+        step("link", "Reading the link", "start")
         article = expand_url(text)
+        step("link", "Reading the link", "done",
+             (f"{article['publisher']} · {_headline(article['text'])}") if article else "Couldn't read it")
         if article:
             trace.append({"step": "link", **{k: article.get(k) for k in ("url", "publisher", "published_at", "method")}})
             text = article["text"]
             posted_at = posted_at or article.get("published_at")
+        elif len(URL_RE.sub("", text).strip()) <= 40:
+            return {"claim_id": claim_id or new_id("clm_"), "claim_text": text, "verification_context": (context or "CURRENT").upper(),
+                    "checkworthy": False, "status": None, "atomic_propositions": [], "trace": trace,
+                    "triage_reason": "Couldn't read this link (it may be blocked, behind a paywall or not a news page). "
+                                     "Paste the headline or the message text instead."}
     t_verify = _dt(verification_time) or datetime.now(timezone.utc)
     claim_time = _dt(posted_at) or t_verify
     context = (context or "CURRENT").upper()
 
     tt = time.time()
+    step("extract", "Splitting it into checkable facts", "start")
     ex = extract(text, _iso(claim_time))
     trace.append({"step": "extract", "secs": round(time.time() - tt, 1), "method": ex.get("method"), "llm_error": ex.get("llm_error"),
                   "dropped_ungrounded": ex.get("ungrounded_dropped"), "location_span": ex.get("location_span")})
@@ -297,6 +449,8 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         p["id"] = f"p{i + 1}"
     factual = [p for p in props if p.get("factuality") == "FACTUAL"]
     claim_id = claim_id or new_id("clm_")
+    step("extract", "Splitting it into checkable facts", "done",
+         f"{len(factual)} checkable fact{'s' if len(factual) != 1 else ''}" if factual else "Nothing checkable in it")
 
     base = {"claim_id": claim_id, "claim_text": text, "verification_context": context, "hazard": hazard,
             "language": ex.get("language"), "claim_time": _iso(claim_time), "verification_time": _iso(t_verify)}
@@ -311,12 +465,14 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         return res
 
     # --- geography (never invent coordinates) ---
+    step("place", "Finding the place", "start")
     geo = {"claim_location": ex.get("location_span") or place, "resolved": None, "uncertainty": None}
     if lat is not None and lon is not None:
         geo["resolved"] = {"lat": lat, "lon": lon, "precision": "provided"}
     else:
         q = ex.get("location_query") or place
-        g = geo_mod.geocode(q) if q else {"unresolved": True, "reason": "no place mentioned"}
+        cc = (ex.get("country_code") or "").strip().lower()
+        g = geo_mod.geocode(q, cc if len(cc) == 2 else None) if q else {"unresolved": True, "reason": "no place mentioned"}
         if g.get("unresolved"):
             geo["uncertainty"] = g["reason"]
         else:
@@ -324,16 +480,28 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
             geo["resolved"] = {"lat": lat, "lon": lon, "precision": g["precision"], "display": g.get("display"),
                                "ambiguous": g.get("ambiguous")}
     trace.append({"step": "geocode", **geo})
+    step("place", "Finding the place", "done",
+         ((geo["resolved"] or {}).get("display") or geo.get("claim_location") or "Location given").split(",")[0]
+         if geo.get("resolved") else "Couldn't pin down a place")
     ed = _dt((ex.get("event_date") or "")[:10] + "T12:00:00Z") if ex.get("event_date") else None
     event_day = ed if ed and abs((ed - claim_time).days) < 3650 else claim_time
     place_words = []
+    # words the geocoder / caller also recognise as part of the place; a "location" the model over-extended
+    # ("buildings collapsing in Andheri") must not turn "buildings" into a place name
+    known = {w for w in re.findall(r"\w+", " ".join(x for x in (ex.get("location_query"), (geo.get("resolved") or {}).get("display"), place) if x).lower())}
     for s in (ex.get("location_span"), ex.get("location_query"), place):
         if s:
-            place_words += [w.strip(" ,.") for w in s.replace(",", " ").split()]
+            toks = [w.strip(" ,.") for w in s.replace(",", " ").split()]
+            if s == ex.get("location_span") and known:
+                toks = [w for w in toks if w.lower() in known or not w.isascii()]
+            place_words += toks
 
     pq = [p["text_en"].rstrip(".") for p in factual if p.get("materiality") == "detail" or p.get("type") in ("damage", "casualty", "directive", "infrastructure")]
+    broad = broad_place_words((geo.get("resolved") or {}).get("display"), place_words)
+    step("search", "Searching alerts, sensors and news", "start")
     cands = gather(hazard, lat, lon, place_words, event_day, t_verify, ex.get("language") or "en",
-                   ex.get("location_query") or place, live and scope != "synthetic", trace, pq, scope)
+                   ex.get("location_query") or place, live and scope != "synthetic", trace, pq, scope, broad, progress)
+    step("search", "Searching alerts, sensors and news", "done", f"{len(cands)} possible sources found")
     if article:
         from rapidfuzz import fuzz
         head = text.split(". ")[0].lower()
@@ -344,6 +512,7 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     bound, cands = bind_event(hazard, lat, lon, event_day, cands, trace)
 
     # --- relevance ranking (embeddings) ---
+    step("compare", "Comparing each fact with the evidence", "start")
     tt = time.time()
     if cands and factual:
         P = models.embed([p["text_en"] for p in factual], "query")
@@ -362,7 +531,9 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
             ev = cands[j]
             r = rule_stance(p, ev, hazard, event_day, claim_time)
             if r is None:
-                if picked >= 4 or sims[i][j] < 0.80:
+                # sensor readings are judged by the rules above only: an NLI model reading a rain-gauge record
+                # against "water on the road" produces confident nonsense
+                if ev.get("kind") == "observation" or picked >= 4 or sims[i][j] < 0.80:
                     continue
                 picked += 1
                 nli_jobs.append((len(links), premise_of(ev), p["text_en"]))
@@ -371,13 +542,39 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     if nli_jobs:
         res_nli = models.nli([(a, b) for _, a, b in nli_jobs])
         for (k, _, _), pr in zip(nli_jobs, res_nli):
-            news_item = links[k]["ev"].get("kind") == "news"
+            ev, news_item = links[k]["ev"], links[k]["ev"].get("kind") == "news"
             # headlines are terse: NLI contradictions on them are noisy, so they count for less
-            links[k]["ent"] = pr["entailment"] * (0.85 if news_item else 1.0)
-            links[k]["con"] = pr["contradiction"] * (0.5 if news_item else 1.0)
-            links[k]["rule"] = f"NLI: entail {pr['entailment']:.2f} / contradict {pr['contradiction']:.2f}"
+            ent = pr["entailment"] * (0.85 if news_item else 1.0)
+            con = pr["contradiction"] * (0.5 if news_item else 1.0)
+            notes = []
+            if news_item and (ev.get("_geo_basis") or "").startswith("returned by"):
+                # the search returned it, but the text never names the claim's place: it may be about elsewhere
+                ent, con = ent * 0.5, con * 0.25
+                notes.append("place not named in the item")
+            lex = LEX.get(hazard)
+            etxt = (ev.get("raw_evidence_text") or "").lower() + " " + (ev.get("evidence_interpretation") or "").lower()
+            if news_item and lex and not any(w in etxt for w in lex):
+                con *= 0.1
+                notes.append("item is about a different hazard")
+            if ev.get("kind") == "alert" and _FORECAST.search(ev.get("raw_evidence_text") or ""):
+                # "rain is likely at isolated places" is a forecast: it cannot refute that something is happening
+                con *= 0.3
+                notes.append("forecast alert, not an observation")
+            if _unmatched_numbers(links[k]["p"]["text_en"], ev):
+                # a claim with a specific figure against evidence that is simply less specific is not a
+                # contradiction; real numeric conflicts are decided by the rules above
+                con *= 0.15
+                notes.append("claim's figures absent from the item")
+            if pr["entailment"] >= 0.3 and pr["contradiction"] < 0.6 and _all_numbers_present(links[k]["p"]["text_en"], ev)                     and ev["_geo"] >= 0.85:
+                # undecided model, same place, same figures ("3 to 4 feet" vs "3-4 ft"): the figures settle it
+                ent, con = max(ent, 0.9), min(con, 0.15)
+                notes.append("figures match")
+            links[k]["ent"], links[k]["con"] = ent, con
+            links[k]["rule"] = f"NLI: entail {pr['entailment']:.2f} / contradict {pr['contradiction']:.2f}" + \
+                (f" ({'; '.join(notes)})" if notes else "")
             links[k]["kind"] = "POSITIVE_CONTRADICTION"
 
+    links += _usgs_absence(hazard, factual, geo, bound, trace, event_day, t_verify, lat, lon, live and scope != "synthetic")
     trace.append({"step": "stance", "pairs_nli": len(nli_jobs), "links": len(links), "secs": round(time.time() - tt, 1)})
     # --- weights, validity per context, independence ---
     t_ctx = claim_time if context == "HISTORICAL" else t_verify
@@ -446,6 +643,8 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
                                    "superseding": [L["rule"] for L in superseding],
                                    "evidence_ids": sorted({L["ev"]["evidence_id"] for L in Ls if (L["ent"] or 0) + (L["con"] or 0) > 0.2})})
 
+    step("compare", "Comparing each fact with the evidence", "done", f"{len(links)} comparisons made")
+    step("decide", "Weighing it all up", "start")
     status, subtype = decide(p_states, context, geo, cands)
     fact_states = [s for s in p_states if s["state"] not in ("SUBJECTIVE", "NON_FACTUAL")]
     mat = [s for s in fact_states] or [{"support": 0, "contra": 0}]
@@ -453,22 +652,34 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     if status == "UNVERIFIED":
         conf = float(np.mean([1 - max(s.get("support", 0), s.get("contra", 0)) for s in mat])) * 0.6
 
-    def ev_card(L):
+    def ev_card(L, stance):
         ev = L["ev"]
         return {"evidence_id": ev["evidence_id"], "source": ev.get("source_name"), "layer": ev.get("layer"),
-                "credibility_tier": ev.get("credibility_tier"), "kind": ev.get("kind"),
+                "credibility_tier": ev.get("credibility_tier"), "kind": ev.get("kind"), "stance": stance,
                 "published_at": ev.get("published_at"), "retrieved_at": ev.get("retrieved_at"),
                 "valid_until": ev.get("valid_until"), "location": ev.get("location_text"),
                 "lat": ev.get("latitude"), "lon": ev.get("longitude"), "geo_basis": ev.get("_geo_basis"),
                 "excerpt": (ev.get("raw_evidence_text") or "")[:400], "interpretation": ev.get("evidence_interpretation"),
                 "url": ev.get("source_url"), "temporal_relation": L["relation"], "proposition_id": L["p"]["id"],
                 "weight": round(L["w"], 3), "entail": round(L["ent"] or 0, 3), "contradict": round(L["con"] or 0, 3),
-                "reason": L.get("rule"), "copy_of_earlier": bool(L.get("copy")),
+                "reason": L.get("rule"), "plain_reason": _plain_reason(L, stance), "copy_of_earlier": bool(L.get("copy")),
                 "provenance_status": ev.get("provenance_status"), "is_synthetic": bool(ev.get("is_synthetic"))}
 
-    supporting = [ev_card(L) for L in links if (L["ent"] or 0) * L["w"] >= 0.25]
-    contradicting = [ev_card(L) for L in links if (L["con"] or 0) * L["w"] >= 0.25 and not L.get("superseding")]
-    superseding_cards = [ev_card(L) for L in links if L.get("superseding") or (L["ent"] and not L["valid_now"])]
+    supporting = [ev_card(L, "supports") for L in links if (L["ent"] or 0) * L["w"] >= 0.25]
+    contradicting = [ev_card(L, "contradicts") for L in links if (L["con"] or 0) * L["w"] >= 0.25 and not L.get("superseding")]
+    # only alerts and reports go stale; a weather/seismic record of a past day is a record, not an expired claim
+    superseding_cards = [ev_card(L, "stale") for L in links if L.get("superseding") or
+                         (L["ent"] and not L["valid_now"] and L["ev"].get("kind") in ("alert", "news"))]
+    used = {(c["evidence_id"], c["proposition_id"]) for c in supporting + contradicting + superseding_cards}
+    neutral, seen_n = [], set()
+    for L in sorted(links, key=lambda x: -x.get("sim", 0)):
+        k = (L["ev"]["evidence_id"], L["p"]["id"])
+        if k in used or L["ev"]["evidence_id"] in seen_n:
+            continue
+        seen_n.add(L["ev"]["evidence_id"])
+        neutral.append(ev_card(L, "neutral"))
+    neutral = neutral[:8]
+    scoreboard = _scoreboard(supporting, contradicting, superseding_cards, neutral)
     uncertainty = []
     if geo.get("uncertainty"):
         uncertainty.append(f"location not resolved: {geo['uncertainty']}")
@@ -483,7 +694,11 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         uncertainty.append("some evidence has provisional provenance")
     if ex.get("method") != "gemini":
         uncertainty.append("claim extracted with rules only (LLM unavailable)")
-    if article:
+    if article and article["method"] == "youtube":
+        uncertainty.append(f"claim read from a YouTube video by {article['channel']} (title, description"
+                           + (" and captions" if article.get("has_captions") else "; no captions available, so the spoken words were not read")
+                           + "); the video itself is not counted as evidence")
+    elif article:
         uncertainty.append(f"claim read from the linked article ({article['publisher']}); the article itself is not counted as evidence"
                            + ("" if article["method"] == "article" else " — page unreadable, used the words in the link"))
     # --- old news: a real event re-shared after it is over is OUTDATED in the CURRENT context ---
@@ -496,6 +711,11 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     live_alert = any(L["ev"].get("kind") == "alert" and L["ent"] and L["valid_now"] and L["w"] * L["ent"] > 0.25 for L in links)
     alert_windows = [_dt(L["ev"].get("valid_until")) for L in links if L["ev"].get("kind") == "alert" and L["ent"] and L["ev"].get("valid_until")]
     window_end = max(alert_windows) if alert_windows else event_day + timedelta(hours=C.ACTIVE_WINDOW_H.get(hazard, 72))
+    # nowcast alerts expire within hours; coverage published since then (news, alerts) still shows the event is live
+    fresh = [_dt(c["published_at"]) for c in supporting if c.get("kind") in ("news", "alert") and c.get("published_at")]
+    fresh = [f for f in fresh if f and f <= t_verify + timedelta(hours=1)]
+    if fresh:
+        window_end = max(window_end, max(fresh) + timedelta(hours=24))
     when = (f"{age_h:.0f} hours ago" if age_h < 48 else f"{age_h / 24:.0f} days ago")
     core_confirmed = status == "VERIFIED" or subtype == "PARTIALLY_SUPPORTED"
     if context == "CURRENT" and core_confirmed and not live_alert and t_verify > window_end:
@@ -509,7 +729,8 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     result = base | {
         "checkworthy": True, "status": status, "verification_subtype": subtype, "confidence": round(conf, 3),
         "atomic_propositions": p_states, "supporting_evidence": supporting, "contradicting_evidence": contradicting,
-        "superseded_or_stale_evidence": superseding_cards,
+        "superseded_or_stale_evidence": superseding_cards, "neutral_evidence": neutral,
+        "source_scoreboard": scoreboard, "search_log": _search_log(trace),
         "temporal_analysis": {"claim_time": _iso(claim_time), "event_time": ex.get("event_date"),
                               "verification_time": _iso(t_verify), "context_time": _iso(t_ctx), "bound_event": bound},
         "geographic_analysis": geo, "uncertainty": uncertainty, "age_note": age_note,
@@ -519,10 +740,76 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         "latency_s": round(time.time() - t0, 2),
     }
     trace.append({"step": "decide", "status": status, "subtype": subtype})
+    step("decide", "Weighing it all up", "done")
     result["trace"] = trace
     if persist:
         _persist_claim(result, ex, (lat, lon), channel, posted_at, links)
     return result
+
+
+_NOTES = {"place not named in the item": "the item doesn't name the place, so it counts for less",
+          "claim's figures absent from the item": "the item doesn't give the claim's figures",
+          "item is about a different hazard": "the item is about a different kind of event",
+          "forecast alert, not an observation": "it is a forecast, not an observation",
+          "figures match": "the place and figures match"}
+
+
+def _plain_reason(L: dict, stance: str) -> str:
+    """One plain-English sentence on why this source counts the way it does."""
+    if L.get("copy"):
+        return "Copy of an earlier report, so it is not counted a second time"
+    rule = L.get("rule") or ""
+    ent, con = L.get("ent") or 0, L.get("con") or 0
+    if rule.startswith("NLI:"):
+        notes = [_NOTES.get(n.strip(), n.strip()) for n in (rule.split("(", 1)[1].rstrip(")").split(";") if "(" in rule else [])]
+        if stance == "supports":
+            head = f"Reports the same thing ({ent:.0%} agreement)"
+        elif stance == "contradicts":
+            head = f"Says something different ({con:.0%} disagreement)"
+        elif stance == "stale":
+            head = "Backed this when it was posted, but is no longer current"
+        else:
+            head = "Related to the topic, but does not confirm or deny this fact"
+        return head + (f"; {'; '.join(notes)}" if notes else "")
+    if rule:
+        return rule[0].upper() + rule[1:]
+    return "Related to the topic, but does not confirm or deny this fact" if stance == "neutral" else ""
+
+
+def _scoreboard(supporting, contradicting, stale, neutral) -> list[dict]:
+    """One row per source: what it did for each fact."""
+    board: dict = {}
+    for role, cards in (("supports", supporting), ("contradicts", contradicting), ("stale", stale), ("neutral", neutral)):
+        for c in cards:
+            row = board.setdefault(c["source"], {"source": c["source"], "layer": c["layer"], "kind": c["kind"],
+                                                 "credibility_tier": c["credibility_tier"], "url": c["url"],
+                                                 "published_at": c["published_at"], "is_synthetic": c["is_synthetic"],
+                                                 "supports": [], "contradicts": [], "stale": [], "neutral": []})
+            if c["proposition_id"] not in row[role]:
+                row[role].append(c["proposition_id"])
+    order = lambda r: (-len(r["contradicts"]), -len(r["supports"]), -len(r["stale"]))
+    return sorted(board.values(), key=order)[:30]
+
+
+_TOOLS = {"usgs": "USGS earthquake catalogue", "openmeteo": "Open-Meteo rainfall records", "news": "Google News"}
+
+
+def _search_log(trace: list) -> list[dict]:
+    """What was searched and how many items each search returned (so 'no evidence' is visibly 'we looked')."""
+    out = []
+    for t in trace:
+        if t["step"] == "gather.live":
+            for c in t["calls"]:
+                m = re.match(r"(\w+)\.(\w+)\((.*)\) → (\d+)$", c)
+                if m:
+                    out.append({"source": _TOOLS.get(m.group(1), m.group(1)), "query": m.group(3)[:90], "found": int(m.group(4))})
+                else:
+                    out.append({"source": "Live lookup", "query": c[:120], "found": 0, "error": True})
+        elif t["step"] == "gather.candidates":
+            out.append({"source": "Official alerts, sensors and stored reports", "query": "matched by place, time and hazard", "found": t["n"]})
+        elif t["step"] == "usgs_absence":
+            out.append({"source": "USGS catalogue completeness check", "query": f"any M{t['min_magnitude']:.1f}+ earthquake near the place", "found": 0})
+    return out
 
 
 def _pub(p: dict) -> dict:
@@ -563,8 +850,12 @@ def decide(ps: list[dict], context: str, geo: dict, cands: list[dict]) -> tuple[
 
 def explain(status, subtype, ps, context, sup, con, stale) -> str:
     def cite(cards, pid):
-        ids = [c["evidence_id"] for c in cards if c["proposition_id"] == pid][:3]
-        return f" [{', '.join(ids)}]" if ids else ""
+        seen, names = set(), []
+        for c in cards:
+            if c["proposition_id"] == pid and c["source"] not in seen:
+                seen.add(c["source"])
+                names.append(f"{c['source']}" + (f", {c['published_at'][:10]}" if c.get("published_at") else ""))
+        return f" ({'; '.join(names[:3])})" if names else ""
     lines = []
     for s in ps:
         if s["state"] in ("SUBJECTIVE", "NON_FACTUAL"):

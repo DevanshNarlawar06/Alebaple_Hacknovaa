@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -58,18 +60,79 @@ class CheckIn(BaseModel):
     hazard_hint: str | None = None
     source_metadata: dict | None = None
     claim_id: str | None = None
+    include_demo: bool = False  # also weigh the labelled synthetic demo scenarios as evidence
 
 
-def _run(body: CheckIn, persist: bool, channel: str):
+def _run(body: CheckIn, persist: bool, channel: str, progress=None):
     if len(body.text) > 4000:
         raise HTTPException(413, "text too long (max 4000 chars)")
     res = verify(body.text, body.posted_at, body.verification_context, body.verification_time, body.lat, body.lon,
-                 body.place, body.hazard_hint, body.claim_id, channel, body.source_metadata, persist=persist)
+                 body.place, body.hazard_hint, body.claim_id, channel, body.source_metadata, persist=persist,
+                 scope="all" if body.include_demo else None, progress=progress)
     if persist and res.get("status"):
         bus.publish("claim.verdict", {k: res.get(k) for k in ("claim_id", "claim_text", "status", "verification_subtype",
                                                               "confidence", "verification_context")} |
                     {"geo": (res.get("geographic_analysis") or {}).get("resolved")})
     return res
+
+
+# ---- checks as jobs: start one, then poll for live progress (works the same for web and a native app) ----
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+def _job_progress(job: dict):
+    def cb(step_id: str, label: str | None, state: str, detail: str | None = None, sub: str | None = None):
+        with _jobs_lock:
+            st = next((x for x in job["steps"] if x["id"] == step_id), None)
+            if st is None:
+                st = {"id": step_id, "label": label or step_id, "state": "active", "detail": None, "subs": [],
+                      "t": round(time.time() - job["t0"], 1)}
+                job["steps"].append(st)
+            if label:
+                st["label"] = label
+            if state == "start":
+                st["state"] = "active"
+            elif state == "done":
+                st["state"], st["detail"] = "done", detail
+            elif state == "sub" and sub:
+                st["subs"].append(sub)
+    return cb
+
+
+@app.post("/api/claims/check/start")
+async def check_start(body: CheckIn, persist: bool = True):
+    now_t = time.time()
+    with _jobs_lock:
+        for k in [k for k, j in _jobs.items() if now_t - j["t0"] > 900]:  # forget jobs older than 15 minutes
+            _jobs.pop(k, None)
+        job = {"id": new_id("job_"), "t0": now_t, "steps": [], "done": False, "result": None, "error": None}
+        _jobs[job["id"]] = job
+    progress = _job_progress(job)
+
+    def work():
+        try:
+            res = _run(body, persist, "tipline" if persist else "check", progress)
+            res.pop("trace", None)
+            job["result"] = res
+        except HTTPException as e:
+            job["error"] = str(e.detail)
+        except Exception as e:  # report instead of leaving the client polling forever
+            job["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+        finally:
+            job["done"] = True
+    threading.Thread(target=work, daemon=True).start()
+    return {"job_id": job["id"]}
+
+
+@app.get("/api/claims/check/{job_id}")
+def check_status(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, "unknown or expired check")
+        return {"steps": [dict(x, subs=list(x["subs"])) for x in job["steps"]], "done": job["done"],
+                "result": job["result"], "error": job["error"], "elapsed": round(time.time() - job["t0"], 1)}
 
 
 @app.post("/api/claims/check")
@@ -285,7 +348,9 @@ async def ingest_now():
 
 
 @app.get("/api/health")
-def health():
+async def health():
     counts = {t: one(f"SELECT COUNT(*) AS n FROM {t}")["n"] for t in ("evidence", "claims", "verdicts", "ground_truth_cases")}
-    return {"ok": True, "snapshot_mode": C.SNAPSHOT_MODE, "llm": C.USE_LLM, "llm_model": C.GEMINI_MODEL,
+    from .ml.llm import check_key
+    llm_ok, llm_why = await asyncio.to_thread(check_key)
+    return {"ok": True, "snapshot_mode": C.SNAPSHOT_MODE, "llm": C.USE_LLM, "llm_ok": llm_ok, "llm_status": llm_why, "llm_model": C.GEMINI_MODEL,
             "nli_model": C.NLI_MODEL, "embed_model": C.EMBED_MODEL, "counts": counts}
