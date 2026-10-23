@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
-import { Search, Play, Smartphone, BarChart3 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import NavBar from '../components/NavBar'
+import { Search, Play, Smartphone, BarChart3, Waves, Activity, Wind, Flame, CloudLightning, Mountain, Sun, AlertCircle, ShieldAlert } from 'lucide-react'
 import { api, ago, onStream } from '../lib/api'
-import { StatusPill, ConfBar } from '../components/ui'
+import { StatusPill, ConfBar, STATUS } from '../components/ui'
 import MapView from '../components/MapView'
 import ClaimPanel from '../components/ClaimPanel'
 import CheckModal from '../components/CheckModal'
 
 const FILTERS = ['ALL', 'VERIFIED', 'CONFLICTING', 'OUTDATED', 'UNVERIFIED']
+const HAZ = { flood: Waves, earthquake: Activity, tsunami: Waves, cyclone: Wind, storm: CloudLightning, wildfire: Flame,
+  landslide: Mountain, heatwave: Sun, drought: Sun }
+const HazardIcon = ({ h }) => { const I = HAZ[h] || AlertCircle; return <I size={14} className="shrink-0 text-ink-2" /> }
 
 export default function Console() {
   const [claims, setClaims] = useState([])
@@ -15,12 +19,14 @@ export default function Console() {
   const [sel, setSel] = useState(null)
   const [filter, setFilter] = useState('ALL')
   const [q, setQ] = useState('')
-  const [check, setCheck] = useState(false)
+  const [params] = useSearchParams()
+  const [check, setCheck] = useState(params.get('check') === '1')
   const [health, setHealth] = useState(null)
   const [filtered, setFiltered] = useState(0)
   const [feed, setFeed] = useState([])
   const [layers, setLayers] = useState({ alerts: true, claims: true })
   const [target, setTarget] = useState(null)
+  const [replaying, setReplaying] = useState(false)
 
   const load = useCallback(() => {
     api.claims('CURRENT', 200).then(setClaims).catch(() => {})
@@ -28,13 +34,18 @@ export default function Console() {
   }, [])
   useEffect(() => {
     load()
-    api.health().then(setHealth).catch(() => setHealth({ ok: false }))
-    return onStream({
+    const ping = () => api.health().then(setHealth).catch(() => setHealth({ ok: false }))
+    ping()
+    const t = setInterval(ping, 15000)
+    const off = onStream({
       'claim.verdict': (d) => { load(); setFeed((f) => [{ t: Date.now(), msg: `${d.status} · ${d.claim_text}` }, ...f].slice(0, 6)) },
       'post.filtered': () => setFiltered((n) => n + 1),
       'post.received': (d) => setFeed((f) => [{ t: Date.now(), msg: `Received · ${d.text}` }, ...f].slice(0, 6)),
       'alerts.refreshed': () => api.alerts().then(setAlerts),
+      'replay.cleared': () => { setSel(null); load() },
+      'replay.finished': () => { setReplaying(false); load() },
     })
+    return () => { off(); clearInterval(t) }
   }, [load])
 
   const shown = useMemo(() => claims.filter((c) =>
@@ -49,29 +60,39 @@ export default function Console() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold tracking-tight">SachVerify</span>
-          <span className="rounded border border-line bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-3">PS-2 · console</span>
-        </div>
-        <div className="relative w-[380px]">
-          <Search size={15} className="absolute left-3 top-2 text-ink-2" />
+      <NavBar right={<>
+        <div className="relative w-[300px]">
+          <Search size={14} className="absolute left-3 top-2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search claims"
-            className="w-full rounded border border-line bg-subtle py-1.5 pl-9 pr-3 text-xs outline-none focus:border-accent focus:bg-white" />
+            className="w-full rounded-md border border-white/10 bg-white/10 py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-400 outline-none focus:border-accent" />
         </div>
-        <div className="flex items-center gap-3">
-          <button className="btn-ghost" onClick={() => api.replay(['pune_flood', 'delhi_quake'])} title="Replay synthetic demo scenarios">
-            <Play size={13} /> Replay demo
+        <span className="flex items-center gap-1.5 text-xs text-slate-300">
+          <span className={`h-2 w-2 rounded-full ${health?.ok ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+          {health?.ok ? 'Live feeds OK' : 'API offline'}
+        </span>
+        <button disabled={replaying} className="btn border border-white/20 bg-white/5 text-white hover:bg-white/10 disabled:opacity-60"
+          onClick={() => { setReplaying(true); setFiltered(0); api.replay(['pune_flood', 'delhi_quake']).catch(() => {}) }} title="Replay synthetic demo scenarios">
+          <Play size={13} /> {replaying ? 'Replaying…' : 'Replay demo'}
+        </button>
+        <button className="btn bg-saffron text-night hover:brightness-95" onClick={() => setCheck(true)}>Check a post</button>
+      </>} />
+
+      <div className="flex shrink-0 items-stretch gap-3 border-b border-line bg-canvas px-4 py-2.5">
+        {['VERIFIED', 'CONFLICTING', 'OUTDATED', 'UNVERIFIED'].map((k) => (
+          <button key={k} onClick={() => setFilter(filter === k ? 'ALL' : k)}
+            className={`flex min-w-[150px] items-center gap-3 rounded-md border bg-white px-3 py-2 text-left ${filter === k ? 'border-ink' : 'border-line'}`}
+            style={{ borderLeft: `3px solid ${STATUS[k].hex}` }}>
+            <span className="font-mono text-xl font-medium" style={{ color: STATUS[k].text }}>{counts[k]}</span>
+            <span className="leading-tight"><span className="block text-xs font-medium">{STATUS[k].label}</span>
+              <span className="block text-[10.5px] text-ink-3">{STATUS[k].hint}</span></span>
           </button>
-          <span className="flex items-center gap-1.5 text-xs text-ink-2">
-            <span className={`h-1.5 w-1.5 rounded-full ${health?.ok ? 'bg-ink-2' : 'bg-st-alert'}`} />
-            {health?.ok ? `Live feeds OK · ${health.counts?.evidence ?? 0} evidence` : 'API offline'}
-          </span>
-          <Link to="/eval" className="p-1.5 text-ink-2 hover:text-ink" title="Evaluation"><BarChart3 size={17} /></Link>
-          <Link to="/beacon" className="p-1.5 text-ink-2 hover:text-ink" title="Beacon (phone app)"><Smartphone size={17} /></Link>
-          <button className="btn-primary" onClick={() => setCheck(true)}>Check a post</button>
+        ))}
+        <div className="ml-auto flex items-center gap-3 rounded-md border border-line bg-white px-3 py-2">
+          <ShieldAlert size={18} className="text-ink-2" />
+          <span className="leading-tight"><span className="block font-mono text-sm">{alerts.length}</span>
+            <span className="block text-[10.5px] text-ink-3">active official alerts (NDMA · GDACS)</span></span>
         </div>
-      </header>
+      </div>
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="flex w-[360px] shrink-0 flex-col border-r border-line">
@@ -91,14 +112,16 @@ export default function Console() {
           <div className="flex-1 overflow-y-auto">
             {shown.map((c) => (
               <button key={c.claim_id} onClick={() => select(c.claim_id)}
-                className={`block w-full border-b border-line px-4 py-3.5 text-left hover:bg-subtle ${sel === c.claim_id ? 'border-l-2 border-l-accent bg-subtle' : ''}`}>
+                style={{ borderLeft: `3px solid ${sel === c.claim_id ? '#0F766E' : (STATUS[c.status]?.hex || '#E5E5E5') + '99'}` }}
+                className={`block w-full border-b border-line px-4 py-3.5 text-left hover:bg-subtle ${sel === c.claim_id ? 'bg-subtle' : ''}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs text-ink-2">{c.location_text || c.event_type} · {ago(c.created_at)}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-ink-2"><HazardIcon h={c.event_type} />
+                    <span className="truncate">{c.location_text || c.event_type} · {ago(c.created_at)}</span></span>
                   <StatusPill status={c.status} small />
                 </div>
                 <div className="mt-1.5 line-clamp-2 text-[13.5px] font-medium">{c.claim_text}</div>
                 <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-ink-3">
-                  <span>{c.channel} · {c.language || 'und'}</span><ConfBar value={c.confidence} />
+                  <span>{c.channel === 'replay' ? 'synthetic demo' : c.channel} · {c.language || 'und'}</span><ConfBar value={c.confidence} />
                 </div>
               </button>
             ))}
@@ -117,7 +140,7 @@ export default function Console() {
         </aside>
 
         <main className="relative flex-1">
-          <MapView alerts={alerts} claims={claims} selectedId={sel} onSelect={select} target={target} layers={layers} />
+          <MapView alerts={alerts} claims={claims} selectedId={sel} onSelect={select} target={target} layers={layers} fit />
           <div className="absolute left-1/2 top-3 z-[500] flex -translate-x-1/2 rounded border border-line bg-white text-xs">
             {[['alerts', 'Official alerts'], ['claims', 'Claims']].map(([k, label]) => (
               <button key={k} onClick={() => setLayers((l) => ({ ...l, [k]: !l[k] }))}
@@ -128,7 +151,7 @@ export default function Console() {
           </div>
           <div className="absolute bottom-4 left-4 z-[500] rounded border border-line bg-white p-3 text-xs">
             <div className="label mb-1.5">Map legend</div>
-            {[['#5F7F68', 'Verified'], ['#A88442', 'Conflicting'], ['#A3A3A3', 'Outdated'], ['#6B7A99', 'Unverified']].map(([c, l]) => (
+            {[['#059669', 'Verified'], ['#D97706', 'Conflicting'], ['#64748B', 'Outdated'], ['#6366F1', 'Unverified']].map(([c, l]) => (
               <div key={l} className="flex items-center gap-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />{l}</div>
             ))}
             <div className="flex items-center gap-2 py-0.5"><span className="h-2.5 w-3 border border-dashed border-ink-2" />Official alert area ({alerts.length})</div>

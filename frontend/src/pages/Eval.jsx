@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import NavBar from '../components/NavBar'
 import { api, fmtTime } from '../lib/api'
 
 const S = ['VERIFIED', 'CONFLICTING', 'OUTDATED', 'UNVERIFIED']
@@ -13,11 +13,10 @@ export default function Eval() {
   const max = Math.max(1, ...S.flatMap((e) => S.map((p) => d.confusion[e][p])))
   const cases = d.config?.cases || []
   return (
+    <div className="min-h-screen bg-canvas"><NavBar />
     <div className="mx-auto max-w-6xl p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Evaluation</h1>
-        <Link to="/" className="text-sm text-accent">← Console</Link>
-      </div>
+      <h1 className="text-xl font-semibold">Evaluation</h1>
+      <p className="mt-1 text-sm text-ink-2">How often the agent's verdict matches the expected answer on benchmark cases, and why it fails when it does.</p>
       <p className="mt-1 font-mono text-xs text-ink-3">run {d.id} · {fmtTime(d.created_at)} · split {d.split} · n = {m.n}</p>
       {m.includes_unreviewed && (
         <p className="mt-3 rounded border border-line bg-subtle p-3 text-xs text-ink-2">
@@ -37,7 +36,7 @@ export default function Eval() {
             <tbody>{S.map((e) => (
               <tr key={e}><td className="pr-2 text-right text-ink-3">{e.slice(0, 4)}</td>
                 {S.map((p) => { const v = d.confusion[e][p]; return (
-                  <td key={p} className="p-0.5"><div className="rounded py-3" style={{ background: `rgba(15,118,110,${v / max * 0.55})`, color: v / max > 0.5 ? '#fff' : '#171717', outline: e === p ? '1px solid #171717' : 'none' }}>{v}</div></td>) })}
+                  <td key={p} className="p-0.5"><div className="rounded py-3" style={{ background: `rgba(13,148,136,${v / max * 0.55})`, color: v / max > 0.5 ? '#fff' : '#171717', outline: e === p ? '1px solid #171717' : 'none' }}>{v}</div></td>) })}
               </tr>))}</tbody>
           </table>
         </div>
@@ -61,6 +60,6 @@ export default function Eval() {
         </table>
         <p className="mt-3 font-mono text-[11px] text-ink-3">All numbers produced by scripts/run_eval.py — not hand-entered.</p>
       </div>
-    </div>
+    </div></div>
   )
 }

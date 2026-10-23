@@ -36,6 +36,7 @@ export default function ClaimPanel({ claimId }) {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <StatusPill status={r.status} />
           <Tag>{(r.verification_subtype || '').replace(/_/g, ' ').toLowerCase()}</Tag>
+          {r.historical_status && <span className="text-[11.5px] text-ink-2">· historically <b>{r.historical_status.toLowerCase()}</b></span>}
           <span className="ml-auto"><ConfBar value={r.confidence} /></span>
         </div>
         {contexts.length > 1 && data.latest.HISTORICAL && data.latest.CURRENT &&
@@ -43,6 +44,14 @@ export default function ClaimPanel({ claimId }) {
           <p className="mt-2 text-[11.5px] text-ink-3">
             Historical: {data.latest.HISTORICAL.status.toLowerCase()} · Current: {data.latest.CURRENT.status.toLowerCase()} — true when posted, no longer current.
           </p>
+        )}
+        {r.age_note && (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">⏱ {r.age_note}</p>
+        )}
+        {r.source_article && (
+          <a href={r.source_article.url} target="_blank" rel="noreferrer" className="mt-2 block truncate text-[12px] text-accent hover:underline">
+            From article · {r.source_article.publisher} ↗
+          </a>
         )}
         <div className="mt-2 font-mono text-[11px] text-ink-3">
           posted {fmtTime(r.claim_time)} · {r.language || 'und'} · {r.hazard}

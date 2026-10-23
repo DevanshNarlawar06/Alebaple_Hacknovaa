@@ -22,6 +22,7 @@ from ..connectors.base import FetchError
 from ..db import conn, insert, new_id, now, rows
 from ..ml import models
 from .extract import extract
+from .url_claim import expand as expand_url
 
 COMPAT = {"flood": {"flood", "storm", "cyclone", "other"}, "storm": {"storm", "cyclone", "flood", "other"},
           "cyclone": {"cyclone", "storm", "flood", "other"}, "earthquake": {"earthquake", "tsunami"},
@@ -80,7 +81,7 @@ def gather(hazard: str, lat, lon, place_words: list[str], event_day: datetime, t
         d0, d1 = (event_day - timedelta(days=3)).date().isoformat(), (event_day + timedelta(days=3)).date().isoformat()
         try:
             if hazard in ("earthquake", "tsunami"):
-                got = usgs.search(d0, d1, lat, lon, 1500, 4.5) if lat is not None else usgs.search(d0, d1, minmag=6)
+                got = usgs.search(d0, d1, lat, lon, 1500, 2.5) if lat is not None else usgs.search(d0, d1, minmag=6)
                 calls.append(f"usgs.search({d0}..{d1}) → {len(got)}")
             if lat is not None and hazard in ("flood", "storm", "cyclone", "heatwave", "landslide", "other", "unknown"):
                 got = openmeteo.daily(lat, lon, event_day.date().isoformat(), 1)
@@ -163,7 +164,7 @@ def bind_event(hazard, lat, lon, event_day, cands, trace) -> tuple[str | None, l
     drop = {e["evidence_id"] for e in evs if e["event_ref"] != bound and e.get("source_id") == evs[0].get("source_id")}
     for e in cands:
         if e.get("event_ref") == bound:
-            e["_geo"], e["_geo_basis"] = 1.0, f"the event this claim refers to ({bound})"
+            e["_geo"], e["_geo_basis"], e["_bound"] = 1.0, f"the event this claim refers to ({bound})", True
     trace.append({"step": "bind_event", "bound": bound, "candidates": [(e["event_ref"], round(score(e), 2)) for e in evs[:5]],
                   "excluded_other_events": sorted(drop)})
     return bound, [e for e in cands if e["evidence_id"] not in drop]
@@ -171,8 +172,23 @@ def bind_event(hazard, lat, lon, event_day, cands, trace) -> tuple[str | None, l
 
 # ---------------- stance ----------------
 
+WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
 def rule_stance(p: dict, ev: dict, hazard: str, event_day: datetime, claim_time: datetime) -> dict | None:
     txt = (p["text_en"] or "").lower()
+    if p.get("type") == "time" and ev.get("_bound"):
+        t = _dt(ev.get("valid_from") or ev.get("published_at"))
+        if t:
+            local = t + timedelta(hours=5, minutes=30) if (ev.get("latitude") or 0) and 60 < (ev.get("longitude") or 0) < 100 else t
+            days = [d for d in WEEKDAYS if d in txt]
+            if days:
+                diffs = [min((WEEKDAYS.index(d) - local.weekday()) % 7, (local.weekday() - WEEKDAYS.index(d)) % 7) for d in days]
+                if min(diffs) == 0:
+                    return {"ent": 0.85, "con": 0.0, "rule": f"event occurred on {local:%A %d %b %Y}"}
+                if min(diffs) == 1:  # reports often come the day after (e.g. a late-night quake "said on Sunday")
+                    return {"ent": 0.5, "con": 0.0, "rule": f"event occurred on {local:%A %d %b %Y} (within a day of the stated day)"}
+                return {"ent": 0.0, "con": 0.7, "kind": "TEMPORAL_MISMATCH", "rule": f"event occurred on {local:%A %d %b %Y}"}
     qt, qv = p.get("quantity_type"), p.get("quantity_value")
     if qt == "magnitude" and qv:
         for q in _q(ev, "magnitude"):
@@ -260,6 +276,13 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
            persist: bool = True, live: bool = True, scope: str | None = None) -> dict:
     t0 = time.time()
     trace: list[dict] = []
+    article = None
+    if "http" in (text or ""):
+        article = expand_url(text)
+        if article:
+            trace.append({"step": "link", **{k: article.get(k) for k in ("url", "publisher", "published_at", "method")}})
+            text = article["text"]
+            posted_at = posted_at or article.get("published_at")
     t_verify = _dt(verification_time) or datetime.now(timezone.utc)
     claim_time = _dt(posted_at) or t_verify
     context = (context or "CURRENT").upper()
@@ -311,6 +334,13 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
     pq = [p["text_en"].rstrip(".") for p in factual if p.get("materiality") == "detail" or p.get("type") in ("damage", "casualty", "directive", "infrastructure")]
     cands = gather(hazard, lat, lon, place_words, event_day, t_verify, ex.get("language") or "en",
                    ex.get("location_query") or place, live and scope != "synthetic", trace, pq, scope)
+    if article:
+        from rapidfuzz import fuzz
+        head = text.split(". ")[0].lower()
+        before = len(cands)
+        cands = [e for e in cands if (e.get("source_url") or "") != article["url"]
+                 and fuzz.token_set_ratio(head, (e.get("raw_evidence_text") or "").lower()) < 92]
+        trace.append({"step": "exclude_self", "removed": before - len(cands)})
     bound, cands = bind_event(hazard, lat, lon, event_day, cands, trace)
 
     # --- relevance ranking (embeddings) ---
@@ -453,6 +483,28 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         uncertainty.append("some evidence has provisional provenance")
     if ex.get("method") != "gemini":
         uncertainty.append("claim extracted with rules only (LLM unavailable)")
+    if article:
+        uncertainty.append(f"claim read from the linked article ({article['publisher']}); the article itself is not counted as evidence"
+                           + ("" if article["method"] == "article" else " — page unreadable, used the words in the link"))
+    # --- old news: a real event re-shared after it is over is OUTDATED in the CURRENT context ---
+    bound_ev = next((c for c in cands if c.get("_bound") and c.get("source_id") == "src_usgs"), None)
+    if bound_ev and _dt(bound_ev.get("valid_from")):
+        event_day = _dt(bound_ev["valid_from"])
+    age_h = (t_verify - event_day).total_seconds() / 3600
+    historical_status = status
+    age_note = None
+    live_alert = any(L["ev"].get("kind") == "alert" and L["ent"] and L["valid_now"] and L["w"] * L["ent"] > 0.25 for L in links)
+    alert_windows = [_dt(L["ev"].get("valid_until")) for L in links if L["ev"].get("kind") == "alert" and L["ent"] and L["ev"].get("valid_until")]
+    window_end = max(alert_windows) if alert_windows else event_day + timedelta(hours=C.ACTIVE_WINDOW_H.get(hazard, 72))
+    when = (f"{age_h:.0f} hours ago" if age_h < 48 else f"{age_h / 24:.0f} days ago")
+    core_confirmed = status == "VERIFIED" or subtype == "PARTIALLY_SUPPORTED"
+    if context == "CURRENT" and core_confirmed and not live_alert and t_verify > window_end:
+        status, subtype = "OUTDATED", "OLD_NEWS"
+        age_note = (f"Real event, but old news: it happened on {event_day:%d %b %Y} ({when}) and is no longer current. "
+                    "If it is being shared now as new, it is misleading.")
+        uncertainty.insert(0, age_note)
+    elif status in ("VERIFIED", "UNVERIFIED") and age_h >= 6:
+        age_note = f"Event time: {event_day:%d %b %Y, %H:%M} UTC ({when})."
 
     result = base | {
         "checkworthy": True, "status": status, "verification_subtype": subtype, "confidence": round(conf, 3),
@@ -460,7 +512,9 @@ def verify(text: str, posted_at: str | None = None, context: str = "CURRENT", ve
         "superseded_or_stale_evidence": superseding_cards,
         "temporal_analysis": {"claim_time": _iso(claim_time), "event_time": ex.get("event_date"),
                               "verification_time": _iso(t_verify), "context_time": _iso(t_ctx), "bound_event": bound},
-        "geographic_analysis": geo, "uncertainty": uncertainty,
+        "geographic_analysis": geo, "uncertainty": uncertainty, "age_note": age_note,
+        "historical_status": historical_status if historical_status != status else None,
+        "event_age_hours": round(age_h, 1), "source_article": article,
         "explanation": explain(status, subtype, p_states, context, supporting, contradicting, superseding_cards),
         "latency_s": round(time.time() - t0, 2),
     }
@@ -526,6 +580,8 @@ def explain(status, subtype, ps, context, sup, con, stale) -> str:
         else:
             lines.append(f"• No source confirms or contradicts: \"{s['text']}\" (absence of evidence is not treated as false).")
     head = {"VERIFIED": "Verified", "CONFLICTING": "Conflicting", "OUTDATED": "Outdated", "UNVERIFIED": "Unverified"}[status]
+    if subtype == "OLD_NEWS":
+        lines.insert(0, "• The event is confirmed, but it is over: this is old news, not a current situation.")
     return f"{head} ({subtype.replace('_', ' ').lower()}, {context.lower()} context).\n" + "\n".join(lines)
 
 

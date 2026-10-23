@@ -3,6 +3,16 @@ import { useEffect } from 'react'
 import 'leaflet/dist/leaflet.css'
 import { STATUS } from './ui'
 
+function FitClaims({ claims }) {
+  const map = useMap()
+  const key = claims.map((c) => c.claim_id).join()
+  useEffect(() => {
+    const pts = claims.filter((c) => c.latitude != null).map((c) => [c.latitude, c.longitude])
+    if (pts.length) map.fitBounds(pts, { padding: [60, 60], maxZoom: 11 })
+  }, [key]) // eslint-disable-line
+  return null
+}
+
 function FlyTo({ target }) {
   const map = useMap()
   useEffect(() => {
@@ -11,7 +21,7 @@ function FlyTo({ target }) {
   return null
 }
 
-export default function MapView({ alerts = [], claims = [], selectedId, onSelect, target, layers, center = [21.5, 79], zoom = 5 }) {
+export default function MapView({ alerts = [], claims = [], selectedId, onSelect, target, layers, fit, center = [21.5, 79], zoom = 5 }) {
   return (
     <MapContainer center={center} zoom={zoom} zoomControl={false} className="h-full w-full">
       <TileLayer
@@ -20,6 +30,7 @@ export default function MapView({ alerts = [], claims = [], selectedId, onSelect
         className="map-tiles-mono"
       />
       <FlyTo target={target} />
+      {fit && <FitClaims claims={claims} />}
       {layers.alerts &&
         alerts.filter((a) => a.polygon_geojson).map((a) => (
           <GeoJSON key={a.evidence_id} data={a.polygon_geojson}

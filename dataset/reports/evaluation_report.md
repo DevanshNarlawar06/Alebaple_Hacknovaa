@@ -1,8 +1,8 @@
-# Evaluation report — 2026-10-23T12:01:59Z
+# Evaluation report — 2026-10-23T16:33:27Z
 
 > ⚠️ Includes cases NOT yet human-reviewed (development run). Do not quote on slides.
 
-Cases: 7 · Accuracy 1.0 · Macro-F1 1.0 · Critical errors 0 · Median latency 8.35 s
+Cases: 7 · Accuracy 1.0 · Macro-F1 1.0 · Critical errors 0 · Median latency 22.29 s
 
 | Status | P | R | F1 | n |
 |---|---|---|---|---|

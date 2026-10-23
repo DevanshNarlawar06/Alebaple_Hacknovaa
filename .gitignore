@@ -41,3 +41,6 @@ data/db/backups/
 *.pyc
 node_modules/
 frontend/dist/
+presentation/_work/
+
+presentation/_work/

@@ -58,7 +58,10 @@ export default function CheckModal({ onClose, onDone }) {
             ) : (
               <>
                 <div className="flex items-center gap-2"><StatusPill status={res.status} />
-                  <span className="font-mono text-[11px] text-ink-3">{res.verification_subtype?.replace(/_/g, ' ').toLowerCase()}</span></div>
+                  <span className="font-mono text-[11px] text-ink-3">{res.verification_subtype?.replace(/_/g, ' ').toLowerCase()}</span>
+                  {res.historical_status && <span className="text-[11.5px] text-ink-2">· historically <b>{res.historical_status.toLowerCase()}</b></span>}</div>
+                {res.source_article && <p className="mt-2 text-[12.5px] font-medium">{res.claim_text}</p>}
+                {res.age_note && <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">⏱ {res.age_note}</p>}
                 <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-ink-2">{res.explanation}</p>
                 <p className="mt-2 font-mono text-[11px] text-ink-3">{res.supporting_evidence.length} supporting · {res.contradicting_evidence.length} contradicting · {res.latency_s}s</p>
               </>

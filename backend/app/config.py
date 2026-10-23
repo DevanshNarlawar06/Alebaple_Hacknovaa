@@ -42,3 +42,9 @@ HAZARD_GEO = {"earthquake": (150, 600), "tsunami": (150, 800), "cyclone": (120, 
               "heatwave": (80, 300), "drought": (150, 600), "other": (30, 150), "unknown": (30, 150)}
 
 HAZARDS = list(HAZARD_GEO)
+
+# Operational window (hours) after an event during which a report of it counts as CURRENT news.
+# Used only when no official alert gives an explicit validity window (alert expiry always takes precedence).
+# Earthquake 72 h ≈ typical aftershock-advisory period; tune per deployment.
+ACTIVE_WINDOW_H = {"earthquake": 72, "tsunami": 48, "flood": 72, "cyclone": 72, "storm": 24, "landslide": 72,
+                   "heatwave": 48, "wildfire": 168, "drought": 2160, "other": 72, "unknown": 72}

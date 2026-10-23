@@ -2,17 +2,18 @@ import { Check, X, HelpCircle, RotateCcw, Minus, ExternalLink } from 'lucide-rea
 import { ago } from '../lib/api'
 
 export const STATUS = {
-  VERIFIED: { label: 'Verified', dot: 'bg-st-verified', hex: '#5F7F68' },
-  CONFLICTING: { label: 'Conflicting', dot: 'bg-st-conflicting', hex: '#A88442' },
-  OUTDATED: { label: 'Outdated', dot: 'bg-st-outdated', hex: '#A3A3A3' },
-  UNVERIFIED: { label: 'Unverified', dot: 'bg-st-unverified', hex: '#6B7A99' },
+  VERIFIED: { label: 'Verified', dot: 'bg-st-verified', hex: '#059669', tint: '#ECFDF5', text: '#065F46', hint: 'Trusted sources confirm it' },
+  CONFLICTING: { label: 'Conflicting', dot: 'bg-st-conflicting', hex: '#D97706', tint: '#FFFBEB', text: '#92400E', hint: 'Trusted sources contradict it' },
+  OUTDATED: { label: 'Outdated', dot: 'bg-st-outdated', hex: '#64748B', tint: '#F1F5F9', text: '#334155', hint: 'Was true, no longer current' },
+  UNVERIFIED: { label: 'Unverified', dot: 'bg-st-unverified', hex: '#6366F1', tint: '#EEF2FF', text: '#3730A3', hint: 'Not enough evidence either way' },
 }
 
 export function StatusPill({ status, small }) {
-  const s = STATUS[status] || { label: status || 'Not a claim', dot: 'bg-ink-3' }
+  const s = STATUS[status] || { label: status || 'Not a claim', hex: '#A3A3A3', tint: '#F5F5F5', text: '#525252' }
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border border-line bg-white ${small ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'} text-ink`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+    <span title={s.hint} style={{ background: s.tint, color: s.text, borderColor: s.hex + '40' }}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-medium ${small ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'}`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.hex }} />
       {s.label}
     </span>
   )

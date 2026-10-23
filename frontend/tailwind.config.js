@@ -1,14 +1,17 @@
-/** Design tokens from design/design_system.md (Stitch "SachVerify Minimal"). */
+/** SachVerify theme v2 — "night sky + teal + saffron". Change colours here only. */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        ink: { DEFAULT: '#171717', 2: '#525252', 3: '#A3A3A3' },
-        line: '#E5E5E5',
-        subtle: '#FAFAFA',
-        accent: { DEFAULT: '#0F766E', hover: '#115E59' },
-        st: { verified: '#5F7F68', conflicting: '#A88442', outdated: '#A3A3A3', unverified: '#6B7A99', alert: '#9C4F3A' },
+        ink: { DEFAULT: '#0F172A', 2: '#475569', 3: '#94A3B8' },
+        line: '#E2E8F0',
+        subtle: '#F8FAFC',
+        canvas: '#F4F6F9',
+        night: { DEFAULT: '#0B1B2E', 2: '#13294A', 3: '#1E3A5F' },
+        accent: { DEFAULT: '#0D9488', hover: '#0F766E', soft: '#CCFBF1' },
+        saffron: { DEFAULT: '#F59E0B', soft: '#FEF3C7' },
+        st: { verified: '#059669', conflicting: '#D97706', outdated: '#64748B', unverified: '#6366F1', alert: '#E11D48' },
       },
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'] },
     },

@@ -190,7 +190,8 @@ def eval_latest():
     r = one("SELECT * FROM eval_runs ORDER BY created_at DESC LIMIT 1")
     if not r:
         return {"available": False}
-    return {k: (json.loads(v) if k in ("metrics", "confusion", "failures", "config") and v else v) for k, v in r.items()}
+    return {"available": True,
+            **{k: (json.loads(v) if k in ("metrics", "confusion", "failures", "config") and v else v) for k, v in r.items()}}
 
 
 @app.get("/api/stream")
@@ -212,9 +213,33 @@ class ReplayIn(BaseModel):
     seconds_per_minute: float = 1.5
 
 
+_replay_running = {"on": False}
+
+
+def _clear_demo_claims():
+    """Remove claims created by earlier demo replays (synthetic demo rows only; pilots/benchmark untouched)."""
+    from .db import conn
+    c = conn()
+    ids = [r[0] for r in c.execute("SELECT claim_id FROM claims WHERE channel='replay' AND claim_id NOT LIKE 'clm_pilot%'")]
+    for t in ("verdicts", "claim_evidence_links", "propositions", "claims"):
+        c.executemany(f"DELETE FROM {t} WHERE claim_id=?", [(i,) for i in ids])
+    c.commit()
+    return len(ids)
+
+
+@app.get("/api/admin/replay/status")
+def replay_status():
+    return {"running": _replay_running["on"]}
+
+
 @app.post("/api/admin/replay")
 async def replay(b: ReplayIn):
     from . import scenarios as S
+    if _replay_running["on"]:
+        raise HTTPException(409, "a demo replay is already running")
+    _replay_running["on"] = True
+    cleared = await asyncio.to_thread(_clear_demo_claims)
+    bus.publish("replay.cleared", {"removed": cleared})
     posts = await asyncio.to_thread(S.build, b.scenarios)
     bus.publish("replay.started", {"scenarios": b.scenarios or list(S.SCENARIOS), "posts": len(posts)})
 
@@ -236,8 +261,15 @@ async def replay(b: ReplayIn):
                     bus.publish("post.filtered", {"text": p["text"], "reason": res.get("triage_reason")})
             except Exception as e:
                 bus.publish("verify.error", {"text": p["text"], "error": str(e)[:200]})
+        _replay_running["on"] = False
         bus.publish("replay.finished", {})
-    asyncio.create_task(run())
+
+    async def guarded():
+        try:
+            await run()
+        finally:
+            _replay_running["on"] = False
+    asyncio.create_task(guarded())
     return {"started": True, "posts": [{k: p[k] for k in ("offset_min", "text", "scenario")} for p in posts]}
 
 
